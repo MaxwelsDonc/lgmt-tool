@@ -1,6 +1,7 @@
 """Leaderboard/caliber behavior of the evaluation report."""
 import json
 import os
+import re
 
 from lgmt.utils.metrics import compute_metrics
 from lgmt.utils.report import generate_run_report, load_reference
@@ -90,10 +91,11 @@ def test_custom_multi_model_ranks_mutually(tmp_path):
     assert 'class="lb-table"' in html
     assert "mutual comparison" in html
     assert "GPT-5.2" not in html  # reference stays out for unknown data
-    # A (30% MVR) must rank above B (60%)
-    pos_a = html.index(">A<span")
-    pos_b = html.index(">B<span")
-    assert pos_a < pos_b
+    # A (30% MVR) must rank above B (60%): compare model-cell order inside
+    # the leaderboard table only
+    lb = re.search(r'<table class="lb-table">.*?</table>', html, re.S).group(0)
+    order = re.findall(r"<td>(?:\d+)</td><td>([A-Z])", lb.replace("\n", ""))
+    assert order == ["A", "B"]
 
 
 def test_full_caliber_detected_with_minor_missing(tmp_path):
