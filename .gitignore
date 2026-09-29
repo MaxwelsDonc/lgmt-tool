@@ -7,6 +7,9 @@ api_keys*.yaml
 logs/
 infer_results/
 demo_output/
+zenodo/dist/
+zenodo/rebuild_work/
+rebuild_work/
 .DS_Store
 *.egg-info/
 dist/

@@ -22,7 +22,6 @@ import argparse
 import hashlib
 import json
 import os
-import random
 import shutil
 import sys
 import time
@@ -33,12 +32,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from lgmt.core.structure import MetamorphicGroups, TestCase  # noqa: E402
-from lgmt.mrs import get_mr  # noqa: E402
 
 KBS_CODE = Path(__file__).resolve().parents[2] / "KBS_LGMT" / "code"
 
-#: MRs whose transform consumes global randomness; each index record for
-#: these carries an rng_seed that reproduces the original follow-up exactly.
+#: MRs whose transform consumes global randomness; for these the index
+#: records explicit transform parameters so rebuilds are exact without RNG.
 RANDOM_MRS = {"MR-P1", "MR-P2", "MR-P3", "MR-P4"}
 
 DATA_SOURCE_FILES = {
@@ -61,32 +59,54 @@ def source_fingerprint(tc: TestCase) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
-def followup_signature(mg: MetamorphicGroups):
-    fol = mg.followup_case
-    return (
-        list(fol.premises_logic),
-        fol.conclusion_logic,
-        list(fol.premises_text),
-        fol.conclusion_text,
-    )
+def _first_unused(value, candidates, used):
+    for i, c in enumerate(candidates):
+        if c == value and i not in used:
+            return i
+    raise ValueError(f"premise {value!r} not found in source premises")
 
 
-def find_reproducing_seed(mr, source: TestCase, target) -> int | None:
-    """Search a small seed space for one that reproduces the follow-up."""
-    for seed in range(1000):
-        random.seed(seed)
-        try:
-            cand = mr.transform(source)
-        except Exception:
-            continue
-        if (
-            cand.premises_logic,
-            cand.conclusion_logic,
-            cand.premises_text,
-            cand.conclusion_text,
-        ) == target:
-            return seed
-    return None
+def extract_transform_params(src: TestCase, fol: TestCase, mr_index: str) -> dict:
+    """Record exactly what the random MRs did, for deterministic rebuilds.
+
+    Identical duplicate premises are interchangeable, so first-match index
+    resolution still yields byte-identical rebuilds.
+    """
+    if mr_index == "MR-P1":  # premise reordering
+        used = set()
+        order = [_first_unused(p, src.premises_logic, used) for p in fol.premises_logic]
+        used.update(order)
+        assert sorted(order) == list(range(len(src.premises_logic)))
+        return {"kind": "premise_order", "premise_order": order}
+    if mr_index == "MR-P2":  # premise duplication (appended at the end)
+        extra = fol.premises_logic[len(src.premises_logic):]
+        used = set()
+        dup = [_first_unused(p, src.premises_logic, used) for p in extra]
+        used.update(dup)
+        return {"kind": "duplicate", "duplicated_indices": dup}
+    if mr_index == "MR-P3":  # irrelevant extension (arithmetic premise appended)
+        return {
+            "kind": "add_premise",
+            "added_logic": fol.premises_logic[-1],
+            "added_text": fol.premises_text[-1],
+        }
+    if mr_index == "MR-P4":  # premise fusion (pair merged, fused appended last)
+        from collections import Counter
+
+        removed = list(
+            (Counter(src.premises_logic) - Counter(fol.premises_logic)).elements()
+        )
+        assert len(removed) == 2, f"P4 should fuse exactly 2 premises, got {removed}"
+        used = set()
+        idx = sorted(_first_unused(p, src.premises_logic, used) for p in removed)
+        used.update(idx)
+        return {
+            "kind": "fuse",
+            "fused_indices": idx,
+            "fused_logic": fol.premises_logic[-1],
+            "fused_text": fol.premises_text[-1],
+        }
+    raise ValueError(f"no transform-param extractor for {mr_index}")
 
 
 def iter_jsonl(path: Path):
@@ -99,7 +119,6 @@ def iter_jsonl(path: Path):
 def build_index(raw_mgs_path: Path, data_source: str, stats: dict) -> list:
     """One index record per MG, in the original file order."""
     records = []
-    mr_cache = {}
     for mg_obj in iter_jsonl(raw_mgs_path):
         src = TestCase(**mg_obj["source_case"])
         fol = TestCase(**mg_obj["followup_case"])
@@ -111,6 +130,7 @@ def build_index(raw_mgs_path: Path, data_source: str, stats: dict) -> list:
         )
         mr_index = mg.metadata.get("mr_index", "")
         rec = {
+            "mg_id": f"{data_source}_{len(records) + 1}",
             "data_source": src.metadata.get("data_source", data_source),
             "mr_index": mr_index,
             "example_id": src.metadata.get("example_id"),
@@ -120,16 +140,7 @@ def build_index(raw_mgs_path: Path, data_source: str, stats: dict) -> list:
             rec["original_file"] = src.metadata["original_file"]
 
         if mr_index in RANDOM_MRS:
-            if mr_index not in mr_cache:
-                mr_cache[mr_index] = get_mr(mr_index)
-            seed = find_reproducing_seed(mr_cache[mr_index], src, followup_signature(mg))
-            if seed is None:
-                stats["seed_search_failed"] += 1
-                raise RuntimeError(
-                    f"could not find an rng seed reproducing {mr_index} for "
-                    f"example {rec['example_id']} — extend the search space"
-                )
-            rec["rng_seed"] = seed
+            rec["transform"] = extract_transform_params(src, fol, mr_index)
         records.append(rec)
         stats["indexed"] += 1
     return records
@@ -209,7 +220,7 @@ def main() -> int:
     folio_lines = sum(1 for _ in open(folio_dst, encoding="utf-8"))
 
     # --- LogicNLI + ProverQA: license-free index only ---
-    stats = {"indexed": 0, "seed_search_failed": 0}
+    stats = {"indexed": 0, "transform_failed": 0}
     index_records = []
     for key in ("logicnli", "proverqa"):
         path = args.raw_mgs_dir / DATA_SOURCE_FILES[key]
@@ -232,10 +243,9 @@ def main() -> int:
     license_note.write_text(
         "mgs_folio.jsonl is derived from the FOLIO dataset, which is\n"
         "licensed under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).\n"
-        "Attribution: Hanjie Chen, Faeze Brahman, Xiang Ren. "
-        "\"CLUTRR: A Diagnostic Benchmark for Inductive Reasoning on Natural Language\"\n"
-        "is NOT the source; the correct citation is:\n"
-        "Simeng Han et al. \"FOLIO: Natural Language Reasoning with First-Order Logic.\" (2024).\n"
+        "Attribution: Simeng Han, Hailey Schoelkopf, Yilun Zhao, et al.,\n"
+        "\"FOLIO: Natural Language Reasoning with First-Order Logic\" (2022/2024),\n"
+        "https://github.com/yale-nlp/FOLIO\n"
         "Share adaptations under the same license.\n",
         encoding="utf-8",
     )
