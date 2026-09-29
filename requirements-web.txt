@@ -1,0 +1,2 @@
+# Web-demo extras (Gradio). Not needed for the core CLI/pipeline.
+gradio>=4.0

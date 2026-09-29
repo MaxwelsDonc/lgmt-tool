@@ -1,0 +1,25 @@
+.git
+.gitignore
+.github
+
+# research / paper assets not needed in the image
+paper
+experiments
+docs
+tools
+
+# tests run in CI on the host, not inside the image
+tests
+
+# local artifacts
+demo_output
+infer_results
+logs
+.venv
+__pycache__
+*.pyc
+*.egg-info
+.env
+config.yaml
+api_keys*.yaml
+.DS_Store

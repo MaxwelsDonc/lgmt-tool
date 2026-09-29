@@ -1,0 +1,6 @@
+# LGMT web-demo dependencies for Hugging Face Spaces.
+# TODO: point this at the published LGMT package (e.g.
+#   git+https://github.com/<org>/lgmt.git
+# ) once the repository is public, instead of the local path used during
+# development.
+gradio>=4.0
