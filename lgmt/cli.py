@@ -118,23 +118,49 @@ def cmd_run(args) -> int:
 
 
 def cmd_report(args) -> int:
+    from pathlib import Path
+
     from lgmt.utils.io import load_inference_records, load_metamorphic_groups
     from lgmt.utils.metrics import compute_metrics, format_metrics_table
     from lgmt.utils.report import generate_run_report
 
-    records = load_inference_records(args.results)
-    if not records:
-        print(f"Error: no inference records loaded from {args.results}")
-        return 1
+    runs = []
+    for i, path in enumerate(args.results):
+        records = load_inference_records(path)
+        if not records:
+            print(f"Error: no inference records loaded from {path}")
+            return 1
+        name = (
+            args.model[i]
+            if i < len(args.model)
+            else (Path(path).stem if len(args.results) == 1 else f"run {i + 1}")
+        )
+        runs.append(
+            {
+                "path": path,
+                "records": records,
+                "metrics": compute_metrics(records),
+                "model": name,
+            }
+        )
 
-    metrics = compute_metrics(records)
-    print(format_metrics_table(metrics))
+    current = runs[0]
+    print(format_metrics_table(current["metrics"]))
 
     mgs = load_metamorphic_groups(args.mgs) if args.mgs else None
     output = args.output or os.path.join(
-        os.path.dirname(os.path.abspath(args.results)), "report.html"
+        os.path.dirname(os.path.abspath(current["path"])), "report.html"
     )
-    generate_run_report(records, metrics, output, mgs=mgs)
+    extras = [{"model": r["model"], "metrics": r["metrics"]} for r in runs[1:]]
+    generate_run_report(
+        current["records"],
+        current["metrics"],
+        output,
+        mgs=mgs,
+        model=current["model"],
+        prompting=args.prompting,
+        extra_runs=extras,
+    )
     return 0
 
 
@@ -276,7 +302,25 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser(
         "report", help="Compute MVR/acc/HDR/FUR metrics and render an HTML report."
     )
-    p.add_argument("--results", required=True, help="Inference result JSONL.")
+    p.add_argument(
+        "--results",
+        action="append",
+        required=True,
+        help="Inference result JSONL; repeatable. The first file is the run "
+        "shown in detail, the rest join the leaderboard.",
+    )
+    p.add_argument(
+        "--model",
+        action="append",
+        default=None,
+        help="Model name for each --results file (repeatable, same order).",
+    )
+    p.add_argument(
+        "--prompting",
+        choices=PROMPTING_CHOICES,
+        default=None,
+        help="Prompting preset of the run(s); used for honest leaderboard notes.",
+    )
     p.add_argument("--mgs", default=None, help="Optional MG JSONL for full logic comparison.")
     p.add_argument("--output", default=None, help="Output HTML path.")
     p.set_defaults(func=cmd_report)

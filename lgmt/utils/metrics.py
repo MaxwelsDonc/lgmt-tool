@@ -56,17 +56,37 @@ def compute_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
 
         mr_index = str(record.get("mr_index", ""))
         mr_bucket = per_mr.setdefault(
-            mr_index, {"total": 0, "violations": 0, "pairs": 0, "hdr": 0, "fur": 0}
+            mr_index,
+            {
+                "total": 0,
+                "violations": 0,
+                "pairs": 0,
+                "hdr": 0,
+                "fur": 0,
+                "src_correct": 0,
+                "both_correct": 0,
+            },
         )
         cat = _mr_category(mr_index)
         cat_bucket = per_category.setdefault(
-            cat, {"total": 0, "violations": 0, "pairs": 0, "hdr": 0, "fur": 0}
+            cat,
+            {
+                "total": 0,
+                "violations": 0,
+                "pairs": 0,
+                "hdr": 0,
+                "fur": 0,
+                "src_correct": 0,
+                "both_correct": 0,
+            },
         )
         mr_bucket["total"] += 1
         cat_bucket["total"] += 1
-
         if s is not None and s:
             source_correct += 1
+            mr_bucket["src_correct"] += 1
+            cat_bucket["src_correct"] += 1
+
         if s is None or f is None:
             continue
 
@@ -75,6 +95,8 @@ def compute_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         cat_bucket["pairs"] += 1
         if s and f:
             both_correct += 1
+            mr_bucket["both_correct"] += 1
+            cat_bucket["both_correct"] += 1
         if s and not f:
             hdr_count += 1
             mr_bucket["hdr"] += 1
@@ -113,6 +135,8 @@ def compute_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                     "key": key,
                     "total": b["total"],
                     "mvr": _div(b["violations"], b["total"]),
+                    "acc_static": _div(b["src_correct"], b["total"]),
+                    "acc_cons": _div(b["both_correct"], b["pairs"]),
                     "hdr": _div(b["hdr"], b["pairs"]),
                     "fur": _div(b["fur"], b["total"]),
                     "violation_count": b["violations"],

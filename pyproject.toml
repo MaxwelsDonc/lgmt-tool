@@ -29,6 +29,7 @@ include = ["lgmt*"]
 
 [tool.setuptools.package-data]
 "lgmt.demo" = ["*.jsonl"]
+"lgmt.data" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
