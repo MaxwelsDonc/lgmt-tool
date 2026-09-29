@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: 1680px 640px; margin: 0; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    width: 1680px; height: 640px;
+    font-family: -apple-system, "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+    background: linear-gradient(135deg, #f7f9fc 0%, #eef2f8 100%);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .canvas { width: 1600px; }
+
+  /* ---------- top interface pills ---------- */
+  .ifaces { display: flex; gap: 18px; justify-content: center; margin-bottom: 34px; }
+  .pill {
+    background: #ffffff; border: 1.5px solid #d7e0ee; border-radius: 999px;
+    padding: 12px 26px; font-size: 19px; color: #33507a; font-weight: 600;
+    box-shadow: 0 2px 8px rgba(47,95,143,.08);
+  }
+  .pill.cli { background: #2f5f8f; border-color: #2f5f8f; color: #fff; font-family: "SF Mono", Menlo, monospace; font-size: 18px; }
+  .pill.cli b { color: #9cc3ee; font-weight: 600; }
+
+  /* ---------- pipeline ---------- */
+  .flow { display: flex; align-items: stretch; gap: 0; }
+  .stage {
+    flex: 1; background: #ffffff; border-radius: 18px; padding: 22px 20px 20px;
+    border: 1px solid #e2e8f2;
+    box-shadow: 0 6px 18px rgba(30,55,90,.07);
+    position: relative;
+  }
+  .stage + .arrow { align-self: center; margin: 0 10px; color: #2f5f8f; font-size: 30px; font-weight: 700; }
+  .num {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: linear-gradient(135deg, #3a6ea5, #2f5f8f); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700; margin-bottom: 12px;
+    box-shadow: 0 3px 8px rgba(47,95,143,.35);
+  }
+  .stage h3 { font-size: 21px; color: #17273f; margin-bottom: 12px; letter-spacing: -0.01em; }
+  .stage ul { list-style: none; }
+  .stage li { font-size: 16.5px; color: #5b6b82; line-height: 1.5; padding-left: 14px; position: relative; }
+  .stage li::before { content: "·"; position: absolute; left: 0; color: #3a6ea5; font-weight: 700; }
+  .stage li em { font-style: normal; color: #33507a; font-weight: 600; }
+  .io {
+    margin-top: 14px; display: inline-block; font-family: "SF Mono", Menlo, monospace;
+    font-size: 14.5px; background: #eef7f0; color: #2f7d4f; border: 1px solid #bfe0c9;
+    border-radius: 8px; padding: 5px 12px;
+  }
+
+  /* ---------- extension chips ---------- */
+  .ext { display: flex; gap: 16px; margin-top: 34px; align-items: center; }
+  .ext .label { font-size: 18px; font-weight: 700; color: #b45309; white-space: nowrap; }
+  .chip {
+    flex: 1; text-align: center; background: #fdf6ea; border: 1.5px solid #ecd9b0;
+    color: #92600c; border-radius: 12px; padding: 12px 10px; font-size: 15px; font-weight: 500;
+  }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="ifaces">
+    <div class="pill cli"><b>CLI</b>&nbsp; lgmt build-mgs · run · report · audit · demo</div>
+    <div class="pill">Python API</div>
+    <div class="pill">Web Demo</div>
+    <div class="pill">Docker</div>
+  </div>
+
+  <div class="flow">
+    <div class="stage">
+      <div class="num">1</div><h3>Case Loader</h3>
+      <ul>
+        <li>NL+FOL dual schema</li>
+        <li><em>FOLIO · LogicNLI · ProverQA</em></li>
+        <li>custom JSONL</li>
+      </ul>
+      <div class="io">source cases (JSONL)</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="stage">
+      <div class="num">2</div><h3>MR Engine</h3>
+      <ul>
+        <li>FOL AST rewriting</li>
+        <li><em>20 built-in MRs</em></li>
+        <li>E / S / P / C levels</li>
+      </ul>
+    </div>
+    <div class="arrow">→</div>
+    <div class="stage">
+      <div class="num">3</div><h3>NL Realizer</h3>
+      <ul>
+        <li>FOL-to-NL via LLM</li>
+        <li>strict translator</li>
+        <li><em>fidelity audit</em></li>
+      </ul>
+    </div>
+    <div class="arrow">→</div>
+    <div class="stage">
+      <div class="num">4</div><h3>Inference Runner</h3>
+      <ul>
+        <li>any OpenAI-compatible endpoint</li>
+        <li><em>4 prompt strategies</em></li>
+        <li>schema-validated parsing</li>
+      </ul>
+    </div>
+    <div class="arrow">→</div>
+    <div class="stage">
+      <div class="num">5</div><h3>Oracle &amp; Reporter</h3>
+      <ul>
+        <li>consistency check</li>
+        <li><em>MVR · Acc_cons · HDR</em></li>
+        <li>HTML defect report</li>
+      </ul>
+      <div class="io">defects + metrics</div>
+    </div>
+  </div>
+
+  <div class="ext">
+    <div class="label">Extension points</div>
+    <div class="chip">custom MRs (3-method plugin, Z3-checked)</div>
+    <div class="chip">custom datasets (open JSONL schema)</div>
+    <div class="chip">any OpenAI-compatible model — API/vLLM/Ollama</div>
+    <div class="chip">offline mock (no key, no network)</div>
+  </div>
+
+</div>
+</body>
+</html>
