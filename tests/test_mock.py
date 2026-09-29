@@ -23,6 +23,9 @@ def _run_mock(mgs, persona, tmp_path):
 def test_consistent_persona_never_violates(demo_mgs_sample, tmp_path):
     records = _run_mock(demo_mgs_sample, "consistent", tmp_path)
     assert len(records) == len(demo_mgs_sample)
+    # the runner stamps run metadata into each record
+    assert records[0]["prompting"] == "zero_cot"
+    assert records[0]["model"] == "mock-consistent"
     metrics = compute_metrics(records)
     assert metrics["mvr"] == 0.0
     assert metrics["acc_static"] == 1.0

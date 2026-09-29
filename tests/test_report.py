@@ -93,7 +93,7 @@ def test_custom_multi_model_ranks_mutually(tmp_path):
     assert "GPT-5.2" not in html  # reference stays out for unknown data
     # A (30% MVR) must rank above B (60%): compare model-cell order inside
     # the leaderboard table only
-    lb = re.search(r'<table class="lb-table">.*?</table>', html, re.S).group(0)
+    lb = re.search(r'<table class="lb-table"[^>]*>.*?</table>', html, re.S).group(0)
     order = re.findall(r"<td>(?:\d+)</td><td>([A-Z])", lb.replace("\n", ""))
     assert order == ["A", "B"]
 
@@ -112,3 +112,83 @@ def test_full_caliber_detected_with_minor_missing(tmp_path):
     )
     html = out.read_text(encoding="utf-8")
     assert "ranked on full 3,091-group evaluation set" in html
+
+
+# --------------------------------------------------------------------- #
+# finalization batch: sorting, guardrail, aliases, snapshot, smart
+# collapse, drill links, lazy per-group view, prompting inference
+# --------------------------------------------------------------------- #
+def test_leaderboard_sortable_and_guardrail(tmp_path):
+    import json as _json
+
+    ref = _json.load(open(REFERENCE))
+    records = _synth_records(ref["demo_40_mg_ids"], violation_ratio=0.5)
+    out = tmp_path / "report.html"
+    generate_run_report(records, compute_metrics(records), str(out), model="m")
+    html = out.read_text(encoding="utf-8")
+    for key in ("mvr", "acc_static", "acc_cons", "hdr", "fur", "model"):
+        assert f'onclick="lbSort(\'{key}\')"' in html
+    assert "lbSort('mvr')" in html  # default sort
+    assert "MVR ranks consistency only" in html  # guardrail note
+    assert "sort by Acc_cons" in html
+
+
+def test_model_alias_merges_with_reference_row(tmp_path):
+    import json as _json
+
+    ref = _json.load(open(REFERENCE))
+    records = _synth_records(ref["demo_40_mg_ids"], violation_ratio=0.2)
+    out = tmp_path / "report.html"
+    # "claude" must merge into "Claude 4.5 Sonnet" — one row, tagged this run
+    generate_run_report(records, compute_metrics(records), str(out), model="claude")
+    html = out.read_text(encoding="utf-8")
+    lb = re.search(r'<table class="lb-table"[^>]*>.*?</table>', html, re.S).group(0)
+    rows = re.findall(r"<td>(?:\d+)</td><td>(.*?)<", lb.replace("\n", ""))
+    assert len(rows) == 6
+    assert "Claude 4.5 Sonnet" in rows
+    assert "this-run" in lb
+    assert "▶ this run" in lb
+
+
+def test_snapshot_date_in_footer(tmp_path):
+    records = _synth_records(["x_1"])
+    out = tmp_path / "report.html"
+    generate_run_report(records, compute_metrics(records), str(out))
+    assert "snapshot 2026-09, LGMT v0.1" in out.read_text(encoding="utf-8")
+
+
+def test_smart_collapse_threshold(tmp_path):
+    small = _synth_records([f"id_{i}" for i in range(50)])
+    big = _synth_records([f"id_{i}" for i in range(101)])
+    o1 = tmp_path / "small.html"
+    o2 = tmp_path / "big.html"
+    generate_run_report(small, compute_metrics(small), str(o1))
+    generate_run_report(big, compute_metrics(big), str(o2))
+    assert '<details class="full-metrics" open>' in o1.read_text(encoding="utf-8")
+    assert '<details class="full-metrics">' in o2.read_text(encoding="utf-8")
+
+
+def test_drill_links_and_lazy_view(tmp_path):
+    records = _synth_records([f"id_{i}" for i in range(5)], violation_ratio=0.4)
+    out = tmp_path / "report.html"
+    generate_run_report(records, compute_metrics(records), str(out), model="m")
+    html = out.read_text(encoding="utf-8")
+    assert "drillFilter('cat'" in html and "drillFilter('mr'" in html
+    assert "function drillFilter" in html
+    assert 'id="lgmt-data"' in html  # data-driven cards
+    assert "function renderMore" in html  # lazy batches
+    assert 'id="lgmt-more"' in html
+    assert "mg-summary" in html  # consistent groups degrade to one-liners
+
+
+def test_prompting_inferred_from_records(tmp_path):
+    records = _synth_records(["x_1"])
+    for r in records:
+        r["model"] = "my-model"
+        r["prompting"] = "few_cot"
+    out = tmp_path / "report.html"
+    generate_run_report(records, compute_metrics(records), str(out))
+    html = out.read_text(encoding="utf-8")
+    assert "my-model" in html  # model name from records, not "this run"
+    # custom data -> no reference board; prompting shown in the meta line
+    assert "prompting <code>few_cot</code>" in html

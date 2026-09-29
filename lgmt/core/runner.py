@@ -150,6 +150,7 @@ def process_group(
     system_prompt_text: str,
     result_save_path: str,
     cot: bool,
+    prompting: str = "",
 ) -> bool:
     """Process single metamorphic group and save result."""
     mg_id = mg.metadata.get("mg_id", "unknown")
@@ -200,6 +201,8 @@ def process_group(
             "mr_name": getattr(mg, "mr_name", ""),
             "mr_index": mg.metadata.get("mr_index", ""),
             "data_source": mg.metadata.get("data_source", ""),
+            "model": model_name,
+            "prompting": prompting,
             "ground_truth": ground_truth_label,
             "source_input": {
                 "premises_text": source_test_case.premises_text,
@@ -274,6 +277,7 @@ def run_inference(
                 system_prompt_text,
                 result_save_path,
                 cot,
+                prompting,
             ): mg
             for mg in mgs
         }

@@ -188,6 +188,21 @@ def cmd_audit(args) -> int:
     return 0
 
 
+def _find_full_eval_set() -> Optional[str]:
+    """Locate the 3,091-group evaluation set (repo checkout or cwd)."""
+    rel = os.path.join(
+        "data", "metamorphic_group", "processed_mgs_core", "processed_mgs_200.jsonl"
+    )
+    candidates = [
+        os.path.join(os.getcwd(), rel),
+        os.path.join(os.path.dirname(__file__), "..", rel),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return os.path.abspath(path)
+    return None
+
+
 def cmd_demo(args) -> int:
     from lgmt.models import MockLLMClient
     from lgmt.core.runner import run_inference
@@ -197,6 +212,16 @@ def cmd_demo(args) -> int:
 
     if args.mgs:
         mgs_path = args.mgs
+    elif args.full:
+        mgs_path = _find_full_eval_set()
+        if mgs_path is None:
+            print(
+                "Error: full evaluation set not found. Expected "
+                "data/metamorphic_group/processed_mgs_core/processed_mgs_200.jsonl "
+                "in the current directory or the repository root."
+            )
+            return 1
+        print(f"[demo] full evaluation set: {mgs_path}")
     else:
         mgs_path = os.path.join(os.path.dirname(__file__), "demo", "demo_mgs.jsonl")
     mgs = load_metamorphic_groups(mgs_path)
@@ -208,6 +233,9 @@ def cmd_demo(args) -> int:
     os.makedirs(output_dir, exist_ok=True)
     results_path = os.path.join(output_dir, "results.jsonl")
     report_path = os.path.join(output_dir, "report.html")
+    # run_inference appends (resume semantics); a demo rerun must start clean
+    if os.path.exists(results_path):
+        os.remove(results_path)
 
     client = MockLLMClient(persona=args.persona)
     model_name = f"mock-{args.persona}"
@@ -348,6 +376,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Mock model persona. 'flawed' intentionally violates some MRs.",
     )
     p.add_argument("--mgs", default=None, help="Override the bundled demo MG set.")
+    p.add_argument(
+        "--full",
+        action="store_true",
+        help="Run the full 3,091-group evaluation set from data/ instead of "
+        "the 40-group demo set (still offline; uses the reference "
+        "full_3091 leaderboard caliber).",
+    )
     p.add_argument("--prompting", choices=PROMPTING_CHOICES, default="zero_direct")
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--quiet", action="store_true", help="Hide the progress bar.")

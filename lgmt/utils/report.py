@@ -1,10 +1,14 @@
 """HTML report generation for MG transformations and inference results.
 
-The evaluation report has three layers:
-    1. Leaderboard summary (this run vs. reference SOTA models, ranked only
-       when the run matches a known evaluation caliber).
-    2. Metric detail (big metric cards + a collapsible full metrics table).
-    3. Per-MG audit cards with vanilla-JS filtering.
+The evaluation report is an evidence chain organized as
+"how bad -> where -> prove it", and every number drills down to atomic
+cases:
+
+    1. Leaderboard (sortable; reference models only on matching calibers).
+    2. Metric detail (cards + collapsible tables; violation counts link
+       into the per-group view with filters applied).
+    3. Per-MG audit view (violations as full cards rendered lazily,
+       consistent groups as one-line summaries expandable on demand).
 
 Everything is inlined (CSS/JS) so the report opens offline by double-click.
 """
@@ -19,8 +23,44 @@ from lgmt.core.structure import MetamorphicGroups, TestCase
 
 REFERENCE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "reference_metrics.json")
 REFERENCE_PROMPTING = "zero_cot"
+REFERENCE_SNAPSHOT = "snapshot 2026-09, LGMT v0.1"
 
-_PRIMARY = "#3a6ea5"
+#: How many violation cards render upfront; more load on demand.
+LAZY_BATCH = 30
+
+# --------------------------------------------------------------------- #
+# model-name aliasing: the same model often appears under different names
+# (CLI dir names, API names, paper names). Centralized normalization.
+# --------------------------------------------------------------------- #
+_MODEL_ALIASES = {
+    "chatgpt": "GPT-5.2",
+    "gpt 5.2": "GPT-5.2",
+    "gpt5.2": "GPT-5.2",
+    "gpt 5": "GPT-5.2",
+    "chatgpt reasoner": "o4-mini",
+    "o4 mini": "o4-mini",
+    "o4mini": "o4-mini",
+    "claude": "Claude 4.5 Sonnet",
+    "claude 4.5 sonnet": "Claude 4.5 Sonnet",
+    "claude sonnet": "Claude 4.5 Sonnet",
+    "deepseek": "DeepSeek Chat",
+    "deepseek chat": "DeepSeek Chat",
+    "deepseek v3": "DeepSeek Chat",
+    "deepseek reasoner": "DeepSeek Reasoner",
+    "deepseek r1": "DeepSeek Reasoner",
+    "llama": "Llama 3.3 70B",
+    "llama 3.3": "Llama 3.3 70B",
+    "llama3.3": "Llama 3.3 70B",
+    "llama 3.3 70b": "Llama 3.3 70B",
+}
+
+
+def normalize_model_name(name: str) -> str:
+    """Normalize casing/hyphens/underscores and resolve known aliases."""
+    key = re.sub(r"[\-_]+", " ", str(name)).strip().lower()
+    key = re.sub(r"\s+", " ", key)
+    return _MODEL_ALIASES.get(key, key)
+
 
 _CSS = """
     * { box-sizing: border-box; }
@@ -33,7 +73,11 @@ _CSS = """
 
     /* ---------- leaderboard ---------- */
     .lb-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .lb-table th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: #6b7280; padding: 8px 10px; border-bottom: 2px solid #e5e7eb; }
+    .lb-table th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: #6b7280; padding: 8px 10px; border-bottom: 2px solid #e5e7eb; user-select: none; }
+    .lb-table th.sortable { cursor: pointer; }
+    .lb-table th.sortable:hover { color: #3a6ea5; }
+    .lb-table th.sorted-asc::after { content: " ▲"; font-size: 10px; }
+    .lb-table th.sorted-desc::after { content: " ▼"; font-size: 10px; }
     .lb-table td { padding: 9px 10px; border-bottom: 1px solid #f0f1f3; }
     .lb-table tr.this-run td { background: #eaf1f9; font-weight: 600; }
     .lb-table tr.medal-1 td:first-child { color: #b8860b; font-weight: 700; }
@@ -44,6 +88,7 @@ _CSS = """
     .this-tag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 9px; background: #3a6ea5; color: #fff; font-size: 11px; font-weight: 700; }
     .ref-tag { display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: #eef1f5; color: #6b7280; font-size: 10px; }
     .lb-note { color: #6b7280; font-size: 12.5px; margin-top: 10px; }
+    .lb-guardrail { color: #8a6d1d; font-size: 12.5px; margin-top: 4px; }
     .lb-hint { background: #fff8e6; border: 1px solid #f3e3b3; color: #7a6414; border-radius: 10px; padding: 12px 14px; font-size: 13.5px; }
 
     /* ---------- metric cards ---------- */
@@ -64,6 +109,8 @@ _CSS = """
     .metrics-table th { background: #f7f8fa; color: #4b5563; }
     .metrics-table td:first-child, .metrics-table th:first-child { text-align: left; }
     .metrics-table caption { caption-side: top; text-align: left; color: #6b7280; font-size: 12px; padding-bottom: 4px; }
+    a.drill { color: #3a6ea5; font-weight: 600; text-decoration: none; }
+    a.drill:hover { text-decoration: underline; }
 
     /* ---------- filter bar + MG cards ---------- */
     .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
@@ -78,6 +125,13 @@ _CSS = """
     .mg-title { font-weight: 600; font-size: 14px; }
     .mg-sub { color: #6b7280; font-size: 12.5px; }
     .card-body { padding: 0 16px 16px; }
+
+    .mg-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: #fff; border-radius: 8px; box-shadow: 0 1px 2px rgba(16,24,40,.05); padding: 7px 12px; margin-bottom: 5px; cursor: pointer; font-size: 13px; }
+    .mg-summary:hover { background: #f7f9fc; }
+    .mg-summary .mg-sub { margin-left: auto; }
+
+    .load-more { display: block; margin: 12px auto; padding: 8px 22px; border: 1px solid #d7dbe0; border-radius: 8px; background: #fff; color: #3a6ea5; font-size: 13.5px; cursor: pointer; }
+    .load-more:hover { background: #f2f6fb; }
 
     .badge { display: inline-block; padding: 2px 10px; font-size: 11.5px; font-weight: 700; border-radius: 10px; color: #fff; }
     .badge-consistent { background: #1f9d55; }
@@ -105,25 +159,220 @@ _CSS = """
     footer a { color: #3a6ea5; text-decoration: none; }
 """
 
-_JS = """
-function lgmtFilter(){
+_JS = r"""
+// ---------- leaderboard sorting ----------
+var LB = {key: null, dir: 1};
+function lbSort(key){
+  if (LB.key === key) { LB.dir *= -1; } else { LB.key = key; LB.dir = 1; }
+  var tbody = document.querySelector('#lb-table tbody');
+  if (!tbody) return;
+  var rows = Array.prototype.slice.call(tbody.rows);
+  rows.sort(function(a, b){
+    if (key === 'model') {
+      return LB.dir * a.dataset.model.localeCompare(b.dataset.model);
+    }
+    return LB.dir * (parseFloat(a.dataset[key]) - parseFloat(b.dataset[key]));
+  });
+  rows.forEach(function(r, i){
+    tbody.appendChild(r);
+    r.cells[0].textContent = i + 1;
+  });
+  document.querySelectorAll('#lb-table th.sortable').forEach(function(th){
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    if (th.dataset.sort === LB.key) {
+      th.classList.add(LB.dir === 1 ? 'sorted-asc' : 'sorted-desc');
+    }
+  });
+}
+
+// ---------- per-group view: data-driven, lazy rendering ----------
+var DATA = [];
+try { DATA = JSON.parse(document.getElementById('lgmt-data').textContent); } catch (e) { DATA = []; }
+var LAZY_BATCH = 30;
+var violRendered = 0;
+var mgHost = null, sentinel = null;
+
+function elemFrom(html){
+  var t = document.createElement('template');
+  t.innerHTML = html.trim();
+  return t.content.firstElementChild;
+}
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function escapeAttr(s){ return String(s).replace(/"/g, '&quot;'); }
+
+// four-column source/follow-up comparison, mirroring the server-side renderer
+function buildCompareTable(src, fol){
+  if (!src.pl) {  // text-only fallback (no MG logic available)
+    var t = '<span class="section-header">Source</span>';
+    (src.pt || []).forEach(function(p){ t += '<div class="text-content">' + esc(p) + '</div>'; });
+    t += '<div class="text-content"><b>Conclusion:</b> ' + esc(src.ct) + '</div>';
+    t += '<span class="section-header">Follow-up</span>';
+    (fol.pt || []).forEach(function(p){ t += '<div class="text-content">' + esc(p) + '</div>'; });
+    t += '<div class="text-content"><b>Conclusion:</b> ' + esc(fol.ct) + '</div>';
+    return t;
+  }
+  var changes = {}, tagged = {}, consumed = {}, f_idx;
+  fol.pt.forEach(function(text, fi){
+    var m = text.match(/\[Changed_(\d+)\]/);
+    if (m) {
+      var si = parseInt(m[1], 10);
+      (changes[si] = changes[si] || []).push(fi);
+      tagged[fi] = true;
+    }
+  });
+  var rows = '', f_ptr = 0;
+  src.pl.forEach(function(s_logic, s_idx){
+    var s_text = src.pt[s_idx] || '', scls = '', fcls = '', fl = '', ft = '';
+    if (changes[s_idx] !== undefined) {
+      scls = 'changed-source'; fcls = 'changed-followup';
+      changes[s_idx].forEach(function(fi){
+        fl += '<div class="split-item"><span class="tag">P' + (fi + 1) + '</span><pre>' + esc(fol.pl[fi]) + '</pre></div>';
+        ft += '<div class="split-item text-content">' + esc(fol.pt[fi]) + '</div>';
+        consumed[fi] = true;
+      });
+    } else {
+      while (f_ptr < fol.pl.length && (tagged[f_ptr] || consumed[f_ptr])) f_ptr++;
+      if (f_ptr < fol.pl.length) {
+        fl = '<span class="tag">P' + (f_ptr + 1) + '</span><pre>' + esc(fol.pl[f_ptr]) + '</pre>';
+        ft = '<div class="text-content">' + esc(fol.pt[f_ptr] || '') + '</div>';
+        consumed[f_ptr] = true; f_ptr++;
+      } else { fl = '<i>(Missing)</i>'; }
+    }
+    rows += '<tr><td class="' + scls + '"><span class="tag">P' + (s_idx + 1) + '</span><pre>' + esc(s_logic) + '</pre></td>'
+      + '<td class="' + scls + '"><div class="text-content">' + esc(s_text) + '</div></td>'
+      + '<td class="' + fcls + '">' + fl + '</td><td class="' + fcls + '">' + ft + '</td></tr>';
+  });
+  while (f_ptr < fol.pl.length) {
+    if (!consumed[f_ptr]) {
+      rows += '<tr><td><i>(None)</i></td><td></td>'
+        + '<td class="changed-followup"><span class="tag">P' + (f_ptr + 1) + '</span><pre>' + esc(fol.pl[f_ptr]) + '</pre></td>'
+        + '<td class="changed-followup"><div class="text-content">' + esc(fol.pt[f_ptr] || '') + '</div></td></tr>';
+    }
+    f_ptr++;
+  }
+  var concCls = 'conclusion-row' + (src.cl !== fol.cl ? ' conclusion-changed' : '');
+  rows += '<tr class="' + concCls + '"><td><span class="tag">Conc</span><pre>' + esc(src.cl) + '</pre></td>'
+    + '<td><div class="text-content">' + esc(src.ct) + '</div></td>'
+    + '<td><pre>' + esc(fol.cl) + '</pre></td>'
+    + '<td><div class="text-content">' + esc(fol.ct) + '</div></td></tr>';
+  return '<table class="comparison-table"><thead><tr>'
+    + '<th class="col-logic">Source Logic</th><th class="col-text">Source Text</th>'
+    + '<th class="col-logic">Follow-up Logic</th><th class="col-text">Follow-up Text</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function cardHtml(rec){
+  var badge = rec.consistent
+    ? '<span class="badge badge-consistent">CONSISTENT</span>'
+    : '<span class="badge badge-violation">VIOLATION</span>';
+  var srcB = '<span class="badge ' + (rec.src_ok ? 'badge-correct' : 'badge-wrong') + '">source: '
+    + esc(rec.src_label) + ' (' + (rec.src_ok ? 'correct' : 'wrong') + ')</span>';
+  var folB = '<span class="badge ' + (rec.fol_ok ? 'badge-correct' : 'badge-wrong') + '">follow-up: '
+    + esc(rec.fol_label) + ' (' + (rec.fol_ok ? 'correct' : 'wrong') + ')</span>';
+  var openAttr = rec.consistent ? '' : ' open';
+  return '<details class="mg-card"' + openAttr + '><summary><span class="mg-title">#'
+    + (rec.i + 1) + ' ' + esc(rec.mg_id) + ' · ' + esc(rec.mr) + ' ' + esc(rec.mr_name) + '</span>'
+    + badge + srcB + folB + '<span class="mg-sub">ground truth: ' + esc(rec.gt) + '</span></summary>'
+    + '<div class="card-body">' + buildCompareTable(rec.src, rec.fol) + '</div></details>';
+}
+
+function summaryHtml(rec){
+  return '<div class="mg-summary" data-mr="' + esc(rec.mr) + '" data-cat="' + esc(rec.cat) + '" ' +
+    'data-cons="true" data-idx="' + rec.i + '" data-search="' + escapeAttr(rec.search) + '" ' +
+    'onclick="toggleSummary(this)">' +
+    '<span class="mg-title">' + esc(rec.mg_id) + '</span>' +
+    '<span class="mg-sub-mr">' + esc(rec.mr) + ' ' + esc(rec.mr_name) + '</span>' +
+    '<span class="badge badge-consistent">CONSISTENT</span>' +
+    '<span class="mg-sub">ground truth: ' + esc(rec.gt) + ' · click to expand</span></div>';
+}
+
+function toggleSummary(el){
+  var next = el.nextElementSibling;
+  if (next && next.classList.contains('mg-card')) { next.remove(); return; }
+  var rec = DATA[parseInt(el.dataset.idx, 10)];
+  el.parentNode.insertBefore(elemFrom(cardHtml(rec)), el.nextSibling);
+}
+
+function currentFilter(){
   var mode = document.querySelector('input[name="lgmt-filter"]:checked').value;
   var cat = document.getElementById('lgmt-cat').value;
   var q = document.getElementById('lgmt-search').value.toLowerCase();
-  var cards = document.querySelectorAll('details.mg-card');
+  return {mode: mode, cat: cat, q: q};
+}
+function recMatches(rec, f){
+  if (f.mode === 'violations' && rec.consistent) return false;
+  if (f.mode === 'consistent' && !rec.consistent) return false;
+  if (f.cat !== 'all' && rec.cat !== f.cat) return false;
+  if (f.q && rec.search.indexOf(f.q) < 0) return false;
+  return true;
+}
+
+function renderMore(){
+  var f = currentFilter();
+  var viol = [];
+  DATA.forEach(function(rec){ if (recMatches(rec, f) && !rec.consistent) viol.push(rec); });
+  var slice = viol.slice(violRendered, violRendered + LAZY_BATCH);
+  slice.forEach(function(rec){ mgHost.appendChild(elemFrom(cardHtml(rec))); });
+  violRendered += slice.length;
+  updateSentinel(viol.length);
+  updateCount();
+}
+function updateSentinel(totalViol){
+  if (!sentinel) return;
+  var remaining = totalViol - violRendered;
+  if (remaining <= 0) { sentinel.style.display = 'none'; }
+  else {
+    sentinel.style.display = '';
+    sentinel.textContent = 'Load more violations (' + remaining + ' remaining)';
+  }
+}
+function updateCount(){
+  var f = currentFilter();
   var shown = 0, viol = 0;
-  cards.forEach(function(c){
-    var ok = true;
-    if (mode === 'violations' && c.dataset.consistent !== 'false') ok = false;
-    if (mode === 'consistent' && c.dataset.consistent !== 'true') ok = false;
-    if (cat !== 'all' && c.dataset.category !== cat) ok = false;
-    if (q && (c.dataset.search || '').indexOf(q) < 0) ok = false;
-    c.style.display = ok ? '' : 'none';
-    if (ok) { shown++; if (c.dataset.consistent === 'false') viol++; }
-  });
+  DATA.forEach(function(rec){ if (recMatches(rec, f)) { shown++; if (!rec.consistent) viol++; } });
   var el = document.getElementById('lgmt-count');
   if (el) el.textContent = shown + ' shown · ' + viol + ' violations';
 }
+
+function lgmtFilter(){
+  if (!mgHost) return;
+  var f = currentFilter();
+  mgHost.innerHTML = '';
+  violRendered = 0;
+  // consistent groups: compact summary rows (cheap, render all matches)
+  DATA.forEach(function(rec){
+    if (rec.consistent && recMatches(rec, f)) mgHost.appendChild(elemFrom(summaryHtml(rec)));
+  });
+  // violations: full cards, lazily in batches
+  renderMore();
+}
+
+// drill-down from metrics tables: apply filter + scroll to per-group view
+function drillFilter(kind, value){
+  document.querySelector('input[name="lgmt-filter"][value="violations"]').checked = true;
+  if (kind === 'cat') {
+    document.getElementById('lgmt-search').value = '';
+    document.getElementById('lgmt-cat').value = value;
+  } else if (kind === 'mr') {
+    document.getElementById('lgmt-cat').value = 'all';
+    document.getElementById('lgmt-search').value = value;
+  } else if (kind === 'all') {
+    document.getElementById('lgmt-cat').value = 'all';
+    document.getElementById('lgmt-search').value = '';
+  }
+  lgmtFilter();
+  document.getElementById('per-group').scrollIntoView({behavior: 'smooth'});
+}
+
+window.addEventListener('DOMContentLoaded', function(){
+  mgHost = document.getElementById('mg-list');
+  sentinel = document.getElementById('lgmt-more');
+  if (mgHost) lgmtFilter();
+  lbSort('mvr');  // establish default sort indicator
+});
 """
 
 
@@ -176,26 +425,65 @@ def build_leaderboard_rows(
     caliber: str,
     reference: Optional[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """Reference models are only ranked on the same data + prompting."""
-    rows = [_lb_row(current_name, current_metrics, is_current=True)]
-    for run in extra_runs:
-        rows.append(_lb_row(run["model"], run["metrics"]))
+    """Reference models are only ranked on the same data + prompting.
+
+    The current run's model name is normalized; if it matches a reference
+    model (e.g. "claude" == "Claude 4.5 Sonnet") the rows merge and the
+    reference row becomes the highlighted "this run" row.
+    """
+    rows: List[Dict[str, Any]] = []
     if reference and caliber in ("demo_40", "full_3091"):
         for name, m in reference.get("models", {}).items():
             rows.append(_lb_row(name, m[caliber], is_reference=True))
-    rows.sort(key=lambda r: (r["mvr"], r["model"]))
+
+    def _merge(run_name, m):
+        norm = normalize_model_name(run_name)
+        for r in rows:
+            if normalize_model_name(r["model"]) == norm:
+                # same model: single row showing THIS RUN's numbers
+                r.update(
+                    {
+                        "mvr": m["mvr"],
+                        "acc_static": m["acc_static"],
+                        "acc_cons": m["acc_cons"],
+                        "hdr": m["hdr"],
+                        "fur": m["fur"],
+                        "is_current": True,
+                    }
+                )
+                return
+        rows.append(_lb_row(run_name, m, is_current=True))
+
+    _merge(current_name, current_metrics)
+    for run in extra_runs:
+        _merge(run["model"], run["metrics"])
+    rows.sort(key=lambda r: (r["mvr"], normalize_model_name(r["model"])))
     return rows
 
 
 def _leaderboard_html(rows, caliber, prompting, reference) -> Tuple[str, str]:
-    """Return (html, note). Empty rows handling happens upstream."""
     if not rows:
         return "", ""
     max_mvr = max(r["mvr"] for r in rows) or 1.0
+
+    def _head(label, key, sortable=True):
+        cls = "sortable" if sortable else ""
+        return f'<th class="{cls}" data-sort="{key}" onclick="lbSort(\'{key}\')">{label}</th>'
+
+    head = (
+        "<tr><th>Rank</th>"
+        + _head("Model", "model")
+        + _head("MVR ↓", "mvr")
+        + _head("Acc_static", "acc_static")
+        + _head("Acc_cons", "acc_cons")
+        + _head("HDR", "hdr")
+        + _head("FUR", "fur")
+        + "</tr>"
+    )
     body = ""
     for rank, r in enumerate(rows, 1):
-        medal = f" medal-{rank}" if rank <= 3 else ""
-        current = " this-run" if r["is_current"] else ""
+        medal = f"medal-{rank} " if rank <= 3 else ""
+        current = "this-run" if r["is_current"] else ""
         width = max(2, int(r["mvr"] / max_mvr * 120))
         tags = ""
         if r["is_current"]:
@@ -203,7 +491,9 @@ def _leaderboard_html(rows, caliber, prompting, reference) -> Tuple[str, str]:
         if r["is_reference"]:
             tags += '<span class="ref-tag">reference</span>'
         body += (
-            f'<tr class="{medal.strip()}{current}">'
+            f'<tr class="{medal}{current}" data-model="{html.escape(r["model"], quote=True)}" '
+            f'data-mvr="{r["mvr"]}" data-acc_static="{r["acc_static"]}" '
+            f'data-acc_cons="{r["acc_cons"]}" data-hdr="{r["hdr"]}" data-fur="{r["fur"]}">'
             f"<td>{rank}</td>"
             f'<td>{html.escape(r["model"])}{tags}</td>'
             f'<td class="lb-mvr"><span class="lb-bar" style="width:{width}px"></span>'
@@ -215,25 +505,19 @@ def _leaderboard_html(rows, caliber, prompting, reference) -> Tuple[str, str]:
             f"</tr>"
         )
     table = (
-        '<table class="lb-table"><thead><tr>'
-        "<th>Rank</th><th>Model</th><th>MVR ↓</th><th>Acc_static</th>"
-        "<th>Acc_cons</th><th>HDR</th><th>FUR</th>"
-        f"</tr></thead><tbody>{body}</tbody></table>"
+        f'<table class="lb-table" id="lb-table"><thead>{head}</thead>'
+        f"<tbody>{body}</tbody></table>"
     )
     if caliber in ("demo_40", "full_3091"):
         subset = "demo-40 subset" if caliber == "demo_40" else "full 3,091-group evaluation set"
-        note = (
-            f"ranked on {subset} · zero-shot CoT · reference: 6 SOTA models"
-        )
+        note = f"ranked on {subset} · zero-shot CoT · reference: 6 SOTA models"
         if reference and prompting != reference.get("prompting", REFERENCE_PROMPTING):
             note += (
                 f" — note: reference used {reference.get('prompting', REFERENCE_PROMPTING)}, "
                 f"this run used {prompting}"
             )
     else:
-        note = (
-            f"ranked on your data set · {len(rows)} model run(s) · mutual comparison"
-        )
+        note = f"ranked on your data set · {len(rows)} model run(s) · mutual comparison"
     return table, note
 
 
@@ -379,6 +663,7 @@ def _html_page(title: str, body: str) -> str:
     </div>
     <footer>
         LGMT · <a href="#">GitHub (TODO)</a> · <a href="#">Paper (TODO)</a> ·
+        Reference metrics: {html.escape(REFERENCE_SNAPSHOT)} ·
         generated {datetime.now().strftime("%Y-%m-%d %H:%M")}
     </footer>
     <script>{_JS}</script>
@@ -406,18 +691,24 @@ def generate_transformation_report(
 # --------------------------------------------------------------------- #
 # evaluation report
 # --------------------------------------------------------------------- #
-def _badge(text: str, css: str) -> str:
-    return f'<span class="badge {css}">{html.escape(text)}</span>'
-
-
 def _metrics_table_html(metrics: Dict[str, Any]) -> str:
+    """Full metrics tables; violation counts drill into the per-group view."""
+
     def _pct(x):
         return f"{x * 100:.2f}%"
 
-    def _row(label, r):
+    def _vcell(row, kind, key):
+        return (
+            f'<a class="drill" href="#per-group" '
+            f"onclick=\"drillFilter('{kind}','{html.escape(key, quote=True)}');return false;\">"
+            f"{row['violation_count']}</a>"
+        )
+
+    def _row(label, r, kind, key):
         return (
             f"<tr><td>{html.escape(label)}</td><td>{r['total']}</td>"
             f"<td>{_pct(r['mvr'])}</td>"
+            f"<td>{_vcell(r, kind, key)}</td>"
             f"<td>{_pct(r['acc_static'])}</td>"
             f"<td>{_pct(r['acc_cons'])}</td>"
             f"<td>{_pct(r['hdr'])}</td>"
@@ -425,25 +716,31 @@ def _metrics_table_html(metrics: Dict[str, Any]) -> str:
         )
 
     head = (
-        "<tr><th>Scope</th><th>Total</th><th>MVR ↓</th><th>Acc_static</th>"
-        "<th>Acc_cons</th><th>HDR</th><th>FUR</th></tr>"
+        "<tr><th>Scope</th><th>Total</th><th>MVR ↓</th><th>Violations</th>"
+        "<th>Acc_static</th><th>Acc_cons</th><th>HDR</th><th>FUR</th></tr>"
     )
     overall = (
         "<tr><td><b>ALL</b></td>"
         f"<td>{metrics['total']}</td>"
         f"<td><b>{_pct(metrics['mvr'])}</b></td>"
+        f"<td>{_vcell(metrics, 'all', '')}</td>"
         f"<td>{_pct(metrics['acc_static'])}</td>"
         f"<td>{_pct(metrics['acc_cons'])}</td>"
         f"<td>{_pct(metrics['hdr'])}</td>"
         f"<td>{_pct(metrics['fur'])}</td></tr>"
     )
     cat_rows = "".join(
-        _row(f"Category {r['key']}", r) for r in metrics.get("per_category", [])
+        _row(f"Category {r['key']}", r, "cat", r["key"])
+        for r in metrics.get("per_category", [])
     )
-    mr_rows = "".join(_row(r["key"], r) for r in metrics.get("per_mr", []))
+    mr_rows = "".join(
+        _row(r["key"], r, "mr", r["key"]) for r in metrics.get("per_mr", [])
+    )
+    # small runs expand the detail by default; large runs stay collapsed
+    open_attr = " open" if metrics.get("total", 0) <= 100 else ""
     return (
         f'<table class="metrics-table">{head}{overall}</table>'
-        f'<details class="full-metrics"><summary>Full metrics by category and by MR'
+        f'<details class="full-metrics"{open_attr}><summary>Full metrics by category and by MR'
         f" (Acc columns: per-scope accuracy over the groups in that scope)</summary>"
         f'<table class="metrics-table">{head}{cat_rows}</table>'
         f'<table class="metrics-table">{head}{mr_rows}</table></details>'
@@ -458,68 +755,85 @@ def _metric_card(value: str, label: str, css: str) -> str:
     )
 
 
-def _mg_card(idx, record, mg, mg_by_id) -> str:
-    mg_id = str(record.get("mg_id", f"#{idx + 1}"))
-    consistent = record.get("is_consistent")
-    is_consistent = "true" if consistent is True else "false"
-    consistency_badge = (
-        _badge("CONSISTENT", "badge-consistent")
-        if consistent is True
-        else _badge("VIOLATION", "badge-violation")
-        if consistent is False
-        else ""
-    )
-    gt = html.escape(str(record.get("ground_truth", "")))
-    src = record.get("source_response", {}) or {}
-    fol = record.get("followup_response", {}) or {}
-    src_badge = _badge(
-        f"source: {src.get('response_label', '?')} "
-        f"({'correct' if src.get('is_correct') else 'wrong'})",
-        "badge-correct" if src.get("is_correct") else "badge-wrong",
-    )
-    fol_badge = _badge(
-        f"follow-up: {fol.get('response_label', '?')} "
-        f"({'correct' if fol.get('is_correct') else 'wrong'})",
-        "badge-correct" if fol.get("is_correct") else "badge-wrong",
-    )
-    mr_index = str(record.get("mr_index", ""))
-    category = mr_index.split("-")[1][0] if "-" in mr_index else "?"
-    heading = f"{html.escape(mg_id)} · {html.escape(mr_index)} {html.escape(str(record.get('mr_name', '')))}"
-    search_blob = " ".join(
-        [
-            mg_id,
-            mr_index,
-            str(record.get("mr_name", "")),
-            gt,
-            " ".join(str(p) for p in (record.get("source_input", {}) or {}).get("premises_text", [])),
-            " ".join(str(p) for p in (record.get("followup_input", {}) or {}).get("premises_text", [])),
-        ]
-    ).lower()
+def _record_view(records, mg_by_id) -> str:
+    """Serialize records compactly; the browser builds cards on demand.
 
-    details_open = "" if consistent is True else " open"
-    parts = [
-        f'<details class="mg-card" data-consistent="{is_consistent}" '
-        f'data-category="{html.escape(category)}" data-search="{html.escape(search_blob, quote=True)}"{details_open}>',
-        f'<summary><span class="mg-title">#{idx + 1} {heading}</span>'
-        f"{consistency_badge}{src_badge}{fol_badge}"
-        f'<span class="mg-sub">ground truth: {gt}</span></summary>',
-        '<div class="card-body">',
-    ]
-    mg_obj = mg_by_id.get(mg_id)
-    if mg_obj is not None:
-        parts.append(_render_comparison_table(mg_obj.source_case, mg_obj.followup_case))
-    else:
-        for side, key in (("Source", "source_input"), ("Follow-up", "followup_input")):
-            inp = record.get(key, {}) or {}
-            parts.append(f'<span class="section-header">{side}</span>')
-            for p in inp.get("premises_text", []):
-                parts.append(f'<div class="text-content">{html.escape(str(p))}</div>')
-            parts.append(
-                '<div class="text-content"><b>Conclusion:</b> '
-                f"{html.escape(str(inp.get('conclusion_text', '')))}</div>"
-            )
-    parts.append("</div></details>")
-    return "\n".join(parts)
+    Embedding raw logic/text arrays (instead of pre-rendered card HTML)
+    keeps full-scale reports small enough to open smoothly.
+    """
+    views = []
+    for idx, record in enumerate(records):
+        mg_id = str(record.get("mg_id", f"#{idx + 1}"))
+        mr_index = str(record.get("mr_index", ""))
+        category = mr_index.split("-")[1][0] if "-" in mr_index else "?"
+        mg_obj = mg_by_id.get(mg_id)
+        if mg_obj is not None:
+            src = {
+                "pl": mg_obj.source_case.premises_logic,
+                "pt": mg_obj.source_case.premises_text,
+                "cl": mg_obj.source_case.conclusion_logic,
+                "ct": mg_obj.source_case.conclusion_text,
+            }
+            fol = {
+                "pl": mg_obj.followup_case.premises_logic,
+                "pt": mg_obj.followup_case.premises_text,
+                "cl": mg_obj.followup_case.conclusion_logic,
+                "ct": mg_obj.followup_case.conclusion_text,
+            }
+        else:
+            src_in = record.get("source_input", {}) or {}
+            fol_in = record.get("followup_input", {}) or {}
+            src = {
+                "pl": None,
+                "pt": list(src_in.get("premises_text", [])),
+                "cl": "",
+                "ct": str(src_in.get("conclusion_text", "")),
+            }
+            fol = {
+                "pl": None,
+                "pt": list(fol_in.get("premises_text", [])),
+                "cl": "",
+                "ct": str(fol_in.get("conclusion_text", "")),
+            }
+        src_resp = record.get("source_response", {}) or {}
+        fol_resp = record.get("followup_response", {}) or {}
+        search_blob = " ".join(
+            [
+                mg_id,
+                mr_index,
+                str(record.get("mr_name", "")),
+                str(record.get("ground_truth", "")),
+                " ".join(str(p) for p in src["pt"]),
+                " ".join(str(p) for p in fol["pt"]),
+            ]
+        ).lower()
+        views.append(
+            {
+                "i": idx,
+                "mg_id": mg_id,
+                "mr": mr_index,
+                "mr_name": str(record.get("mr_name", "")),
+                "cat": category,
+                "gt": str(record.get("ground_truth", "")),
+                "consistent": record.get("is_consistent") is True,
+                "src_label": str(src_resp.get("response_label", "?")),
+                "src_ok": bool(src_resp.get("is_correct")),
+                "fol_label": str(fol_resp.get("response_label", "?")),
+                "fol_ok": bool(fol_resp.get("is_correct")),
+                "search": search_blob,
+                "src": src,
+                "fol": fol,
+            }
+        )
+    return json.dumps(views, ensure_ascii=False)
+
+
+def _field_from_records(records, field) -> Optional[str]:
+    for r in records:
+        v = r.get(field)
+        if v:
+            return str(v)
+    return None
 
 
 def generate_run_report(
@@ -532,17 +846,19 @@ def generate_run_report(
     prompting: Optional[str] = None,
     extra_runs: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
-    """Full evaluation report: leaderboard + metrics + per-MG audit cards.
+    """Full evaluation report: leaderboard + metrics + per-MG audit view.
 
     Args:
         records: current run's inference records (drives cards and metrics).
         metrics: precomputed metrics for ``records``.
         extra_runs: optional list of ``{"model", "records", "metrics"}`` for
             other models evaluated on the same MG set (mutual ranking).
-        model / prompting: labels for the current run, shown on the board.
+        model / prompting: labels for the current run; when omitted they are
+            inferred from the ``model`` / ``prompting`` fields stored in the
+            result records by the runner.
     """
-    prompting = prompting or "unspecified"
-    current_name = model or "this run"
+    prompting = prompting or _field_from_records(records, "prompting") or "unspecified"
+    current_name = model or _field_from_records(records, "model") or "this run"
     extra_runs = extra_runs or []
     mg_ids = [r.get("mg_id") for r in records]
     reference = load_reference()
@@ -559,6 +875,10 @@ def generate_run_report(
         table, note = _leaderboard_html(rows, caliber, prompting, reference)
         body += table
         body += f'<div class="lb-note">{html.escape(note)}</div>\n'
+        body += (
+            '<div class="lb-guardrail">MVR ranks consistency only; a model must also be '
+            "accurate — sort by Acc_cons for the combined view.</div>\n"
+        )
     else:
         body += (
             '<div class="lb-hint">Leaderboard is unavailable for this data set: '
@@ -579,9 +899,7 @@ def generate_run_report(
         + _metric_card(str(metrics["total"]), "metamorphic groups", "mc-grey")
         + "</div>"
     )
-    meta_bits = []
-    if model:
-        meta_bits.append(f'model <code>{html.escape(model)}</code>')
+    meta_bits = [f'model <code>{html.escape(current_name)}</code>']
     meta_bits.append(f"prompting <code>{html.escape(prompting)}</code>")
     meta_bits.append(f"{len(records)} metamorphic groups")
     meta_bits.append(f"generated {datetime.now().strftime('%Y-%m-%d %H:%M')}")
@@ -591,11 +909,15 @@ def generate_run_report(
     body += _metrics_table_html(metrics)
     body += "</div>"
 
-    # ---------------- layer 3: per-MG cards ---------------- #
+    # ---------------- layer 3: per-MG audit view ---------------- #
     mg_by_id = {mg.metadata.get("mg_id"): mg for mg in (mgs or [])}
     categories = sorted(
         {
-            (str(r.get("mr_index", "")).split("-")[1][0] if "-" in str(r.get("mr_index", "")) else "?")
+            (
+                str(r.get("mr_index", "")).split("-")[1][0]
+                if "-" in str(r.get("mr_index", ""))
+                else "?"
+            )
             for r in records
         }
     )
@@ -603,7 +925,7 @@ def generate_run_report(
         f'<option value="{html.escape(c)}">Category {html.escape(c)}</option>'
         for c in categories
     )
-    body += '<div class="card"><h2 style="margin-top:0">Per-Group Results</h2>\n'
+    body += '<div class="card" id="per-group"><h2 style="margin-top:0">Per-Group Results</h2>\n'
     body += (
         '<div class="filter-bar">'
         '<label><input type="radio" name="lgmt-filter" value="all" checked onchange="lgmtFilter()"> All</label>'
@@ -616,7 +938,9 @@ def generate_run_report(
         '<span class="filter-count" id="lgmt-count"></span>'
         "</div>\n"
     )
-    body += "\n".join(_mg_card(i, r, None, mg_by_id) for i, r in enumerate(records))
+    body += f'<script type="application/json" id="lgmt-data">{_record_view(records, mg_by_id)}</script>\n'
+    body += '<div id="mg-list"></div>\n'
+    body += '<button class="load-more" id="lgmt-more" onclick="renderMore()">Load more</button>\n'
     body += "</div>"
 
     page = _html_page(title, body)
