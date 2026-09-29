@@ -123,9 +123,9 @@ pip install -r requirements-web.txt
 python -m lgmt.webapp        # serves http://0.0.0.0:7860
 ```
 
-A public instance is planned on Hugging Face Spaces
-(**TODO: Space URL placeholder**). Deployment steps for Docker and Spaces
-are in [DEPLOY.md](DEPLOY.md); the Space entrypoint lives in `spaces/`.
+The demo is launched locally (see the Gradio section above); we do not
+host a public instance. Deployment options (including HF Spaces) are
+documented in [DEPLOY.md](DEPLOY.md).
 
 ## Data
 
@@ -134,9 +134,8 @@ are in [DEPLOY.md](DEPLOY.md); the Space entrypoint lives in `spaces/`.
 - `data/source_test_case/` — source entailment cases from FOLIO, LogicNLI,
   and ProverQA used to build MGs.
 - `data/metamorphic_group/processed_mgs_core/processed_mgs_200.jsonl` — the
-  3,091-group evaluation set used in the paper's experiments.
-- The complete 76K-instance dataset is archived at Zenodo
-  (**TODO: DOI placeholder**).
+  3,091-group evaluation benchmark used in the paper's experiments
+  (see `data/README.md` for provenance and licensing).
 
 ## Extending LGMT with a custom MR
 
