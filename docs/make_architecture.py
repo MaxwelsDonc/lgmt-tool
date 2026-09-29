@@ -98,4 +98,5 @@ for xx in (3 + (w+gap) + w/2, 3 + 3*(w+gap) + w/2):
     ax.add_patch(FancyArrowPatch((xx, 25.8), (xx, 15.8), arrowstyle="-", color="#e3c89a", lw=1.1, zorder=1))
 
 fig.savefig("/tmp/arch_v2.png", bbox_inches="tight", facecolor=fig.get_facecolor())
+fig.savefig("/tmp/arch_v2.pdf", bbox_inches="tight", facecolor=fig.get_facecolor())  # vector, for the paper
 print("saved")
