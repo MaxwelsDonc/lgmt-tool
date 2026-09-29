@@ -14,3 +14,4 @@ rebuild_work/
 *.egg-info/
 dist/
 build/
+paper/
