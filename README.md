@@ -1,7 +1,7 @@
 # LGMT — Logic-Guided Metamorphic Testing for LLM Logical Reasoning
 
-![CI](https://img.shields.io/badge/CI-placeholder-lightgrey)
-![License](https://img.shields.io/badge/license-MIT-placeholder-lightgrey)
+[![CI](https://github.com/MaxwelsDonc/lgmt-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/MaxwelsDonc/lgmt-tool/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **LGMT** evaluates the logical-reasoning reliability of large language models
 with *metamorphic testing grounded in first-order logic (FOL)*. It applies
@@ -187,4 +187,8 @@ ICSE 2027 Tool Demonstration paper (**TODO: citation placeholder**).
 
 ## License
 
-MIT (placeholder — to be confirmed by the authors).
+[MIT](LICENSE) — Copyright (c) 2026 Zenghui Zhou and contributors.
+
+Note: the source datasets that the bundled evaluation data derives from
+(FOLIO, LogicNLI, ProverQA) carry their own licenses — see
+[data/README.md](data/README.md) for the full data-provenance statement.
