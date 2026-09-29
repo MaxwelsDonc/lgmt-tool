@@ -1,0 +1,39 @@
+\begin{table*}[pos=htbp]
+\centering
+\caption{Impact of prompting strategies on model performance. Acc\_static, Acc\_cons, and HDR are comparative evaluation metrics; MVR measures the defect detection capability of LGMT; FUR captures the limitation of consistency-based testing.}\label{tab:rq4}
+\begin{tabular}{llccc|c|c}
+\toprule
+Model & Prompt & Acc\_static & Acc\_cons & HDR & MVR & FUR \\
+\midrule
+GPT-5.2 & Zero-shot & 69.07\% & 53.61\% & 15.46\% & 23.07\% & 23.33\% \\
+GPT-5.2 & Zero-shot CoT & 73.34\% & 56.84\% & 16.50\% & 26.76\% & 16.40\% \\
+GPT-5.2 & Few-shot & 66.13\% & 50.47\% & 15.66\% & 23.65\% & 25.88\% \\
+GPT-5.2 & Few-shot CoT & 75.25\% & 63.25\% & 12.00\% & 18.57\% & 18.18\% \\
+\midrule
+Claude 4.5 Sonnet & Zero-shot & 73.46\% & 61.59\% & 11.88\% & 20.52\% & 17.90\% \\
+Claude 4.5 Sonnet & Zero-shot CoT & 73.53\% & 60.97\% & 12.56\% & 20.84\% & 18.19\% \\
+Claude 4.5 Sonnet & Few-shot & 76.87\% & 65.67\% & 11.19\% & 19.15\% & 15.17\% \\
+Claude 4.5 Sonnet & Few-shot CoT & 80.03\% & 69.87\% & 10.16\% & 17.22\% & 12.91\% \\
+\midrule
+Llama 3.3 & Zero-shot & 67.26\% & 55.68\% & 11.58\% & 20.48\% & 23.84\% \\
+Llama 3.3 & Zero-shot CoT & 65.38\% & 52.38\% & 13.01\% & 25.43\% & 22.19\% \\
+Llama 3.3 & Few-shot & 69.56\% & 58.10\% & 11.45\% & 19.83\% & 22.06\% \\
+Llama 3.3 & Few-shot CoT & 71.95\% & 58.59\% & 13.36\% & 23.10\% & 18.31\% \\
+\midrule
+DeepSeek Chat & Zero-shot & 68.36\% & 56.26\% & 12.10\% & 22.29\% & 21.45\% \\
+DeepSeek Chat & Zero-shot CoT & 69.91\% & 55.65\% & 14.27\% & 24.72\% & 19.64\% \\
+DeepSeek Chat & Few-shot & 71.79\% & 59.33\% & 12.46\% & 19.99\% & 20.67\% \\
+DeepSeek Chat & Few-shot CoT & 72.89\% & 58.88\% & 14.01\% & 25.98\% & 15.14\% \\
+\midrule
+o4-mini & Zero-shot & 68.07\% & 55.29\% & 12.78\% & 22.06\% & 22.65\% \\
+o4-mini & Zero-shot CoT & 69.36\% & 56.20\% & 13.17\% & 22.06\% & 21.74\% \\
+o4-mini & Few-shot & 77.71\% & 63.77\% & 13.94\% & 22.39\% & 13.85\% \\
+o4-mini & Few-shot CoT & 81.07\% & 67.55\% & 13.52\% & 21.81\% & 10.64\% \\
+\midrule
+DeepSeek Reasoner & Zero-shot & 61.76\% & 49.89\% & 11.87\% & 20.67\% & 29.44\% \\
+DeepSeek Reasoner & Zero-shot CoT & 72.44\% & 56.71\% & 15.72\% & 29.44\% & 13.85\% \\
+DeepSeek Reasoner & Few-shot & 77.09\% & 61.92\% & 15.17\% & 26.08\% & 12.00\% \\
+DeepSeek Reasoner & Few-shot CoT & 81.82\% & 69.78\% & 12.03\% & 20.45\% & 9.77\% \\
+\bottomrule
+\end{tabular}
+\end{table*}

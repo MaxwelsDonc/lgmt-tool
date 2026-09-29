@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+config.yaml
+api_keys*.yaml
+logs/
+infer_results/
+demo_output/
+.DS_Store
+*.egg-info/
+dist/
+build/

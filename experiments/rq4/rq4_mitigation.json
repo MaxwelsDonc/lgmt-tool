@@ -1,0 +1,658 @@
+{
+    "metadata": {
+        "model_order": [
+            "GPT-5.2",
+            "Claude 4.5 Sonnet",
+            "Llama 3.3",
+            "DeepSeek Chat",
+            "o4-mini",
+            "DeepSeek Reasoner"
+        ],
+        "prompting_strategy_order": [
+            "Zero-shot",
+            "Zero-shot CoT",
+            "Few-shot",
+            "Few-shot CoT"
+        ],
+        "prompt_mapping": [
+            {
+                "shot": "zero",
+                "prompt": "direct",
+                "display": "Zero-shot"
+            },
+            {
+                "shot": "zero",
+                "prompt": "cot",
+                "display": "Zero-shot CoT"
+            },
+            {
+                "shot": "few",
+                "prompt": "direct",
+                "display": "Few-shot"
+            },
+            {
+                "shot": "few",
+                "prompt": "cot",
+                "display": "Few-shot CoT"
+            }
+        ],
+        "model_mapping": [
+            {
+                "raw_model": "chatgpt",
+                "display_model": "GPT-5.2"
+            },
+            {
+                "raw_model": "claude",
+                "display_model": "Claude 4.5 Sonnet"
+            },
+            {
+                "raw_model": "llama",
+                "display_model": "Llama 3.3"
+            },
+            {
+                "raw_model": "deepseek",
+                "display_model": "DeepSeek Chat"
+            },
+            {
+                "raw_model": "chatgpt_reasoner",
+                "display_model": "o4-mini"
+            },
+            {
+                "raw_model": "deepseek_reasoner",
+                "display_model": "DeepSeek Reasoner"
+            }
+        ],
+        "metric_definitions": {
+            "acc_static": "# source_correct / # total_MGs",
+            "acc_cons": "# (source_correct and followup_correct) / # total_MGs",
+            "hdr": "acc_static - acc_cons",
+            "mvr": "# (is_consistent == false) / # total_MGs",
+            "fur": "# (source_correct == false and followup_correct == false and is_consistent == true) / # total_MGs"
+        },
+        "zero_division_policy": "all metrics are set to 0.0 when total_count == 0"
+    },
+    "main_table": [
+        {
+            "Model": "GPT-5.2",
+            "Prompt": "Zero-shot",
+            "Shot_Type": "zero",
+            "Prompt_Type": "direct",
+            "total_count": 3091,
+            "acc_static": 0.690715,
+            "acc_static_percent": "69.07%",
+            "acc_cons": 0.536072,
+            "acc_cons_percent": "53.61%",
+            "hdr": 0.154643,
+            "hdr_percent": "15.46%",
+            "mvr": 0.23067,
+            "mvr_percent": "23.07%",
+            "fur": 0.233258,
+            "fur_percent": "23.33%"
+        },
+        {
+            "Model": "GPT-5.2",
+            "Prompt": "Zero-shot CoT",
+            "Shot_Type": "zero",
+            "Prompt_Type": "cot",
+            "total_count": 3091,
+            "acc_static": 0.73342,
+            "acc_static_percent": "73.34%",
+            "acc_cons": 0.568424,
+            "acc_cons_percent": "56.84%",
+            "hdr": 0.164995,
+            "hdr_percent": "16.50%",
+            "mvr": 0.267551,
+            "mvr_percent": "26.76%",
+            "fur": 0.164025,
+            "fur_percent": "16.40%"
+        },
+        {
+            "Model": "GPT-5.2",
+            "Prompt": "Few-shot",
+            "Shot_Type": "few",
+            "Prompt_Type": "direct",
+            "total_count": 3091,
+            "acc_static": 0.661275,
+            "acc_static_percent": "66.13%",
+            "acc_cons": 0.504691,
+            "acc_cons_percent": "50.47%",
+            "hdr": 0.156584,
+            "hdr_percent": "15.66%",
+            "mvr": 0.236493,
+            "mvr_percent": "23.65%",
+            "fur": 0.258816,
+            "fur_percent": "25.88%"
+        },
+        {
+            "Model": "GPT-5.2",
+            "Prompt": "Few-shot CoT",
+            "Shot_Type": "few",
+            "Prompt_Type": "cot",
+            "total_count": 3091,
+            "acc_static": 0.752507,
+            "acc_static_percent": "75.25%",
+            "acc_cons": 0.632481,
+            "acc_cons_percent": "63.25%",
+            "hdr": 0.120026,
+            "hdr_percent": "12.00%",
+            "mvr": 0.1857,
+            "mvr_percent": "18.57%",
+            "fur": 0.181818,
+            "fur_percent": "18.18%"
+        },
+        {
+            "Model": "Claude 4.5 Sonnet",
+            "Prompt": "Zero-shot",
+            "Shot_Type": "zero",
+            "Prompt_Type": "direct",
+            "total_count": 3090,
+            "acc_static": 0.734628,
+            "acc_static_percent": "73.46%",
+            "acc_cons": 0.615858,
+            "acc_cons_percent": "61.59%",
+            "hdr": 0.11877,
+            "hdr_percent": "11.88%",
+            "mvr": 0.205178,
+            "mvr_percent": "20.52%",
+            "fur": 0.178964,
+            "fur_percent": "17.90%"
+        },
+        {
+            "Model": "Claude 4.5 Sonnet",
+            "Prompt": "Zero-shot CoT",
+            "Shot_Type": "zero",
+            "Prompt_Type": "cot",
+            "total_count": 3090,
+            "acc_static": 0.735275,
+            "acc_static_percent": "73.53%",
+            "acc_cons": 0.609709,
+            "acc_cons_percent": "60.97%",
+            "hdr": 0.125566,
+            "hdr_percent": "12.56%",
+            "mvr": 0.208414,
+            "mvr_percent": "20.84%",
+            "fur": 0.181877,
+            "fur_percent": "18.19%"
+        },
+        {
+            "Model": "Claude 4.5 Sonnet",
+            "Prompt": "Few-shot",
+            "Shot_Type": "few",
+            "Prompt_Type": "direct",
+            "total_count": 3091,
+            "acc_static": 0.768683,
+            "acc_static_percent": "76.87%",
+            "acc_cons": 0.656745,
+            "acc_cons_percent": "65.67%",
+            "hdr": 0.111938,
+            "hdr_percent": "11.19%",
+            "mvr": 0.191524,
+            "mvr_percent": "19.15%",
+            "fur": 0.151731,
+            "fur_percent": "15.17%"
+        },
+        {
+            "Model": "Claude 4.5 Sonnet",
+            "Prompt": "Few-shot CoT",
+            "Shot_Type": "few",
+            "Prompt_Type": "cot",
+            "total_count": 3090,
+            "acc_static": 0.800324,
+            "acc_static_percent": "80.03%",
+            "acc_cons": 0.698706,
+            "acc_cons_percent": "69.87%",
+            "hdr": 0.101618,
+            "hdr_percent": "10.16%",
+            "mvr": 0.172168,
+            "mvr_percent": "17.22%",
+            "fur": 0.129126,
+            "fur_percent": "12.91%"
+        },
+        {
+            "Model": "Llama 3.3",
+            "Prompt": "Zero-shot",
+            "Shot_Type": "zero",
+            "Prompt_Type": "direct",
+            "total_count": 3091,
+            "acc_static": 0.672598,
+            "acc_static_percent": "67.26%",
+            "acc_cons": 0.556778,
+            "acc_cons_percent": "55.68%",
+            "hdr": 0.11582,
+            "hdr_percent": "11.58%",
+            "mvr": 0.204788,
+            "mvr_percent": "20.48%",
+            "fur": 0.238434,
+            "fur_percent": "23.84%"
+        },
+        {
+            "Model": "Llama 3.3",
+            "Prompt": "Zero-shot CoT",
+            "Shot_Type": "zero",
+            "Prompt_Type": "cot",
+            "total_count": 3091,
+            "acc_static": 0.653834,
+            "acc_static_percent": "65.38%",
+            "acc_cons": 0.523779,
+            "acc_cons_percent": "52.38%",
+            "hdr": 0.130055,
+            "hdr_percent": "13.01%",
+            "mvr": 0.254287,
+            "mvr_percent": "25.43%",
+            "fur": 0.221935,
+            "fur_percent": "22.19%"
+        },
+        {
+            "Model": "Llama 3.3",
+            "Prompt": "Few-shot",
+            "Shot_Type": "few",
+            "Prompt_Type": "direct",
+            "total_count": 3091,
+            "acc_static": 0.695568,
+            "acc_static_percent": "69.56%",
+            "acc_cons": 0.581042,
+            "acc_cons_percent": "58.10%",
+            "hdr": 0.114526,
+            "hdr_percent": "11.45%",
+            "mvr": 0.198318,
+            "mvr_percent": "19.83%",
+            "fur": 0.220641,
+            "fur_percent": "22.06%"
+        },
+        {
+            "Model": "Llama 3.3",
+            "Prompt": "Few-shot CoT",
+            "Shot_Type": "few",
+            "Prompt_Type": "cot",
+            "total_count": 3091,
+            "acc_static": 0.719508,
+            "acc_static_percent": "71.95%",
+            "acc_cons": 0.585895,
+            "acc_cons_percent": "58.59%",
+            "hdr": 0.133614,
+            "hdr_percent": "13.36%",
+            "mvr": 0.230993,
+            "mvr_percent": "23.10%",
+            "fur": 0.183112,
+            "fur_percent": "18.31%"
+        },
+        {
+            "Model": "DeepSeek Chat",
+            "Prompt": "Zero-shot",
+            "Shot_Type": "zero",
+            "Prompt_Type": "direct",
+            "total_count": 3091,
+            "acc_static": 0.683598,
+            "acc_static_percent": "68.36%",
+            "acc_cons": 0.562601,
+            "acc_cons_percent": "56.26%",
+            "hdr": 0.120996,
+            "hdr_percent": "12.10%",
+            "mvr": 0.222905,
+            "mvr_percent": "22.29%",
+            "fur": 0.214494,
+            "fur_percent": "21.45%"
+        },
+        {
+            "Model": "DeepSeek Chat",
+            "Prompt": "Zero-shot CoT",
+            "Shot_Type": "zero",
+            "Prompt_Type": "cot",
+            "total_count": 3091,
+            "acc_static": 0.699126,
+            "acc_static_percent": "69.91%",
+            "acc_cons": 0.556454,
+            "acc_cons_percent": "55.65%",
+            "hdr": 0.142672,
+            "hdr_percent": "14.27%",
+            "mvr": 0.247169,
+            "mvr_percent": "24.72%",
+            "fur": 0.196377,
+            "fur_percent": "19.64%"
+        },
+        {
+            "Model": "DeepSeek Chat",
+            "Prompt": "Few-shot",
+            "Shot_Type": "few",
+            "Prompt_Type": "direct",
+            "total_count": 3091,
+            "acc_static": 0.717891,
+            "acc_static_percent": "71.79%",
+            "acc_cons": 0.593335,
+            "acc_cons_percent": "59.33%",
+            "hdr": 0.124555,
+            "hdr_percent": "12.46%",
+            "mvr": 0.199935,
+            "mvr_percent": "19.99%",
+            "fur": 0.206729,
+            "fur_percent": "20.67%"
+        },
+        {
+            "Model": "DeepSeek Chat",
+            "Prompt": "Few-shot CoT",
+            "Shot_Type": "few",
+            "Prompt_Type": "cot",
+            "total_count": 3091,
+            "acc_static": 0.72889,
+            "acc_static_percent": "72.89%",
+            "acc_cons": 0.588806,
+            "acc_cons_percent": "58.88%",
+            "hdr": 0.140084,
+            "hdr_percent": "14.01%",
+            "mvr": 0.259786,
+            "mvr_percent": "25.98%",
+            "fur": 0.151407,
+            "fur_percent": "15.14%"
+        },
+        {
+            "Model": "o4-mini",
+            "Prompt": "Zero-shot",
+            "Shot_Type": "zero",
+            "Prompt_Type": "direct",
+            "total_count": 3091,
+            "acc_static": 0.680686,
+            "acc_static_percent": "68.07%",
+            "acc_cons": 0.552896,
+            "acc_cons_percent": "55.29%",
+            "hdr": 0.12779,
+            "hdr_percent": "12.78%",
+            "mvr": 0.220641,
+            "mvr_percent": "22.06%",
+            "fur": 0.226464,
+            "fur_percent": "22.65%"
+        },
+        {
+            "Model": "o4-mini",
+            "Prompt": "Zero-shot CoT",
+            "Shot_Type": "zero",
+            "Prompt_Type": "cot",
+            "total_count": 3091,
+            "acc_static": 0.693627,
+            "acc_static_percent": "69.36%",
+            "acc_cons": 0.561954,
+            "acc_cons_percent": "56.20%",
+            "hdr": 0.131673,
+            "hdr_percent": "13.17%",
+            "mvr": 0.220641,
+            "mvr_percent": "22.06%",
+            "fur": 0.217405,
+            "fur_percent": "21.74%"
+        },
+        {
+            "Model": "o4-mini",
+            "Prompt": "Few-shot",
+            "Shot_Type": "few",
+            "Prompt_Type": "direct",
+            "total_count": 3091,
+            "acc_static": 0.777095,
+            "acc_static_percent": "77.71%",
+            "acc_cons": 0.637658,
+            "acc_cons_percent": "63.77%",
+            "hdr": 0.139437,
+            "hdr_percent": "13.94%",
+            "mvr": 0.223876,
+            "mvr_percent": "22.39%",
+            "fur": 0.138467,
+            "fur_percent": "13.85%"
+        },
+        {
+            "Model": "o4-mini",
+            "Prompt": "Few-shot CoT",
+            "Shot_Type": "few",
+            "Prompt_Type": "cot",
+            "total_count": 3091,
+            "acc_static": 0.810741,
+            "acc_static_percent": "81.07%",
+            "acc_cons": 0.67551,
+            "acc_cons_percent": "67.55%",
+            "hdr": 0.135231,
+            "hdr_percent": "13.52%",
+            "mvr": 0.218052,
+            "mvr_percent": "21.81%",
+            "fur": 0.106438,
+            "fur_percent": "10.64%"
+        },
+        {
+            "Model": "DeepSeek Reasoner",
+            "Prompt": "Zero-shot",
+            "Shot_Type": "zero",
+            "Prompt_Type": "direct",
+            "total_count": 3091,
+            "acc_static": 0.617599,
+            "acc_static_percent": "61.76%",
+            "acc_cons": 0.498868,
+            "acc_cons_percent": "49.89%",
+            "hdr": 0.118732,
+            "hdr_percent": "11.87%",
+            "mvr": 0.206729,
+            "mvr_percent": "20.67%",
+            "fur": 0.294403,
+            "fur_percent": "29.44%"
+        },
+        {
+            "Model": "DeepSeek Reasoner",
+            "Prompt": "Zero-shot CoT",
+            "Shot_Type": "zero",
+            "Prompt_Type": "cot",
+            "total_count": 3091,
+            "acc_static": 0.724361,
+            "acc_static_percent": "72.44%",
+            "acc_cons": 0.56713,
+            "acc_cons_percent": "56.71%",
+            "hdr": 0.157231,
+            "hdr_percent": "15.72%",
+            "mvr": 0.294403,
+            "mvr_percent": "29.44%",
+            "fur": 0.138467,
+            "fur_percent": "13.85%"
+        },
+        {
+            "Model": "DeepSeek Reasoner",
+            "Prompt": "Few-shot",
+            "Shot_Type": "few",
+            "Prompt_Type": "direct",
+            "total_count": 3091,
+            "acc_static": 0.770948,
+            "acc_static_percent": "77.09%",
+            "acc_cons": 0.619217,
+            "acc_cons_percent": "61.92%",
+            "hdr": 0.151731,
+            "hdr_percent": "15.17%",
+            "mvr": 0.260757,
+            "mvr_percent": "26.08%",
+            "fur": 0.120026,
+            "fur_percent": "12.00%"
+        },
+        {
+            "Model": "DeepSeek Reasoner",
+            "Prompt": "Few-shot CoT",
+            "Shot_Type": "few",
+            "Prompt_Type": "cot",
+            "total_count": 3091,
+            "acc_static": 0.818182,
+            "acc_static_percent": "81.82%",
+            "acc_cons": 0.697832,
+            "acc_cons_percent": "69.78%",
+            "hdr": 0.120349,
+            "hdr_percent": "12.03%",
+            "mvr": 0.204465,
+            "mvr_percent": "20.45%",
+            "fur": 0.097703,
+            "fur_percent": "9.77%"
+        }
+    ],
+    "source_counts": {
+        "GPT-5.2::Zero-shot": {
+            "total_count": 3091,
+            "source_correct_count": 2135,
+            "acc_cons_count": 1657,
+            "violation_count": 713,
+            "fur_count": 721
+        },
+        "GPT-5.2::Zero-shot CoT": {
+            "total_count": 3091,
+            "source_correct_count": 2267,
+            "acc_cons_count": 1757,
+            "violation_count": 827,
+            "fur_count": 507
+        },
+        "GPT-5.2::Few-shot": {
+            "total_count": 3091,
+            "source_correct_count": 2044,
+            "acc_cons_count": 1560,
+            "violation_count": 731,
+            "fur_count": 800
+        },
+        "GPT-5.2::Few-shot CoT": {
+            "total_count": 3091,
+            "source_correct_count": 2326,
+            "acc_cons_count": 1955,
+            "violation_count": 574,
+            "fur_count": 562
+        },
+        "Claude 4.5 Sonnet::Zero-shot": {
+            "total_count": 3090,
+            "source_correct_count": 2270,
+            "acc_cons_count": 1903,
+            "violation_count": 634,
+            "fur_count": 553
+        },
+        "Claude 4.5 Sonnet::Zero-shot CoT": {
+            "total_count": 3090,
+            "source_correct_count": 2272,
+            "acc_cons_count": 1884,
+            "violation_count": 644,
+            "fur_count": 562
+        },
+        "Claude 4.5 Sonnet::Few-shot": {
+            "total_count": 3091,
+            "source_correct_count": 2376,
+            "acc_cons_count": 2030,
+            "violation_count": 592,
+            "fur_count": 469
+        },
+        "Claude 4.5 Sonnet::Few-shot CoT": {
+            "total_count": 3090,
+            "source_correct_count": 2473,
+            "acc_cons_count": 2159,
+            "violation_count": 532,
+            "fur_count": 399
+        },
+        "Llama 3.3::Zero-shot": {
+            "total_count": 3091,
+            "source_correct_count": 2079,
+            "acc_cons_count": 1721,
+            "violation_count": 633,
+            "fur_count": 737
+        },
+        "Llama 3.3::Zero-shot CoT": {
+            "total_count": 3091,
+            "source_correct_count": 2021,
+            "acc_cons_count": 1619,
+            "violation_count": 786,
+            "fur_count": 686
+        },
+        "Llama 3.3::Few-shot": {
+            "total_count": 3091,
+            "source_correct_count": 2150,
+            "acc_cons_count": 1796,
+            "violation_count": 613,
+            "fur_count": 682
+        },
+        "Llama 3.3::Few-shot CoT": {
+            "total_count": 3091,
+            "source_correct_count": 2224,
+            "acc_cons_count": 1811,
+            "violation_count": 714,
+            "fur_count": 566
+        },
+        "DeepSeek Chat::Zero-shot": {
+            "total_count": 3091,
+            "source_correct_count": 2113,
+            "acc_cons_count": 1739,
+            "violation_count": 689,
+            "fur_count": 663
+        },
+        "DeepSeek Chat::Zero-shot CoT": {
+            "total_count": 3091,
+            "source_correct_count": 2161,
+            "acc_cons_count": 1720,
+            "violation_count": 764,
+            "fur_count": 607
+        },
+        "DeepSeek Chat::Few-shot": {
+            "total_count": 3091,
+            "source_correct_count": 2219,
+            "acc_cons_count": 1834,
+            "violation_count": 618,
+            "fur_count": 639
+        },
+        "DeepSeek Chat::Few-shot CoT": {
+            "total_count": 3091,
+            "source_correct_count": 2253,
+            "acc_cons_count": 1820,
+            "violation_count": 803,
+            "fur_count": 468
+        },
+        "o4-mini::Zero-shot": {
+            "total_count": 3091,
+            "source_correct_count": 2104,
+            "acc_cons_count": 1709,
+            "violation_count": 682,
+            "fur_count": 700
+        },
+        "o4-mini::Zero-shot CoT": {
+            "total_count": 3091,
+            "source_correct_count": 2144,
+            "acc_cons_count": 1737,
+            "violation_count": 682,
+            "fur_count": 672
+        },
+        "o4-mini::Few-shot": {
+            "total_count": 3091,
+            "source_correct_count": 2402,
+            "acc_cons_count": 1971,
+            "violation_count": 692,
+            "fur_count": 428
+        },
+        "o4-mini::Few-shot CoT": {
+            "total_count": 3091,
+            "source_correct_count": 2506,
+            "acc_cons_count": 2088,
+            "violation_count": 674,
+            "fur_count": 329
+        },
+        "DeepSeek Reasoner::Zero-shot": {
+            "total_count": 3091,
+            "source_correct_count": 1909,
+            "acc_cons_count": 1542,
+            "violation_count": 639,
+            "fur_count": 910
+        },
+        "DeepSeek Reasoner::Zero-shot CoT": {
+            "total_count": 3091,
+            "source_correct_count": 2239,
+            "acc_cons_count": 1753,
+            "violation_count": 910,
+            "fur_count": 428
+        },
+        "DeepSeek Reasoner::Few-shot": {
+            "total_count": 3091,
+            "source_correct_count": 2383,
+            "acc_cons_count": 1914,
+            "violation_count": 806,
+            "fur_count": 371
+        },
+        "DeepSeek Reasoner::Few-shot CoT": {
+            "total_count": 3091,
+            "source_correct_count": 2529,
+            "acc_cons_count": 2157,
+            "violation_count": 632,
+            "fur_count": 302
+        }
+    },
+    "output_files": {
+        "json": "/Users/zenghui/Code/LGMT_code/rqs/rq4/rq4_mitigation.json",
+        "csv": "/Users/zenghui/Code/LGMT_code/rqs/rq4/rq4_mitigation_main_table.csv"
+    }
+}

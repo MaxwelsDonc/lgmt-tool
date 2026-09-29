@@ -1,0 +1,51 @@
+[
+    {
+        "Model": "claude 4.5 sonnet",
+        "Shot_Type": "zero",
+        "Prompt_Type": "cot",
+        "mvr": "20.84%",
+        "Inconsistent_Count": 644
+    },
+    {
+        "Model": "deepseek",
+        "Shot_Type": "zero",
+        "Prompt_Type": "cot",
+        "mvr": "24.72%",
+        "Inconsistent_Count": 764
+    },
+    {
+        "Model": "deepseek reasoner",
+        "Shot_Type": "zero",
+        "Prompt_Type": "cot",
+        "mvr": "29.44%",
+        "Inconsistent_Count": 910
+    },
+    {
+        "Model": "gpt 5.2",
+        "Shot_Type": "zero",
+        "Prompt_Type": "cot",
+        "mvr": "26.76%",
+        "Inconsistent_Count": 827
+    },
+    {
+        "Model": "llama3.3",
+        "Shot_Type": "zero",
+        "Prompt_Type": "cot",
+        "mvr": "25.43%",
+        "Inconsistent_Count": 786
+    },
+    {
+        "Model": "o4-mini",
+        "Shot_Type": "zero",
+        "Prompt_Type": "cot",
+        "mvr": "22.06%",
+        "Inconsistent_Count": 682
+    },
+    {
+        "Model": "ALL",
+        "Shot_Type": "zero",
+        "Prompt_Type": "cot",
+        "mvr": "24.87%",
+        "Inconsistent_Count": 4613
+    }
+]

@@ -1,0 +1,23 @@
+# LGMT configuration.
+# Copy to config.yaml and adjust; CLI flags and LGMT_* environment
+# variables override these values.
+
+model:
+  # Model name served by the endpoint (or an alias expanded via `aliases`).
+  name: gpt-4o
+  # OpenAI-compatible endpoint. Works with OpenAI, vLLM, Ollama, proxies...
+  base_url: "https://api.openai.com/v1"
+  # API key. Prefer the LGMT_API_KEY environment variable in shared setups.
+  api_key: ""
+  # Sampling temperature (ignored for reasoning models, which reject it).
+  temperature: 0.0
+  # Optional short-name -> served-model-name aliases.
+  aliases:
+    chatgpt: gpt-4o
+    # claude: claude-3-5-sonnet-20240620
+
+inference:
+  # Prompting preset: zero_direct | zero_cot | few_direct | few_cot
+  prompting: zero_cot
+  # Thread-pool size for inference.
+  max_workers: 100

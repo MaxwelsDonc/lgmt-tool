@@ -1,0 +1,951 @@
+{
+    "metadata": {
+        "shot_type": "zero",
+        "prompt_type": "cot",
+        "models": [
+            "GPT-5.2",
+            "Claude 4.5 Sonnet",
+            "Llama 3.3",
+            "DeepSeek Chat",
+            "o4-mini",
+            "Deepseek Reasoner"
+        ],
+        "category_order": [
+            "MR-E",
+            "MR-S",
+            "MR-P",
+            "MR-C"
+        ],
+        "rule_order": [
+            "MR-E1.1",
+            "MR-E1.2",
+            "MR-E1.3",
+            "MR-E1.4",
+            "MR-E1.5",
+            "MR-E1.6",
+            "MR-E2.1",
+            "MR-E2.2",
+            "MR-E2.3",
+            "MR-E2.4",
+            "MR-S1",
+            "MR-S2",
+            "MR-P1",
+            "MR-P2",
+            "MR-P3",
+            "MR-P4",
+            "MR-P5",
+            "MR-C1",
+            "MR-C2",
+            "MR-C3"
+        ],
+        "mvr_definition": "violation_count / total_count, where violation means is_consistent == false",
+        "zero_division_policy": "mvr=0.0 when total_count=0"
+    },
+    "tables": {
+        "category_csv_rows": [
+            {
+                "Category": "MR-E",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.250229,
+                "Claude 4.5 Sonnet": 0.213566,
+                "Llama 3.3": 0.250229,
+                "DeepSeek Chat": 0.249313,
+                "o4-mini": 0.246563,
+                "Deepseek Reasoner": 0.278643,
+                "Average": 0.24809
+            },
+            {
+                "Category": "MR-S",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.32,
+                "Claude 4.5 Sonnet": 0.318296,
+                "Llama 3.3": 0.3525,
+                "DeepSeek Chat": 0.35,
+                "o4-mini": 0.2775,
+                "Deepseek Reasoner": 0.365,
+                "Average": 0.330554
+            },
+            {
+                "Category": "MR-P",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.191,
+                "Claude 4.5 Sonnet": 0.106,
+                "Llama 3.3": 0.161,
+                "DeepSeek Chat": 0.159,
+                "o4-mini": 0.144,
+                "Deepseek Reasoner": 0.219,
+                "Average": 0.163333
+            },
+            {
+                "Category": "MR-C",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.391667,
+                "Claude 4.5 Sonnet": 0.296667,
+                "Llama 3.3": 0.351667,
+                "DeepSeek Chat": 0.321667,
+                "o4-mini": 0.263333,
+                "Deepseek Reasoner": 0.401667,
+                "Average": 0.337778
+            },
+            {
+                "Category": "Average",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.267551,
+                "Claude 4.5 Sonnet": 0.208414,
+                "Llama 3.3": 0.254287,
+                "DeepSeek Chat": 0.247169,
+                "o4-mini": 0.220641,
+                "Deepseek Reasoner": 0.294403,
+                "Average": 0.248746
+            }
+        ],
+        "rule_csv_rows": [
+            {
+                "Category": "MR-E1.1",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.27,
+                "Claude 4.5 Sonnet": 0.26,
+                "Llama 3.3": 0.27,
+                "DeepSeek Chat": 0.255,
+                "o4-mini": 0.25,
+                "Deepseek Reasoner": 0.285,
+                "Average": 0.265
+            },
+            {
+                "Category": "MR-E1.2",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.34,
+                "Claude 4.5 Sonnet": 0.275,
+                "Llama 3.3": 0.32,
+                "DeepSeek Chat": 0.37,
+                "o4-mini": 0.31,
+                "Deepseek Reasoner": 0.32,
+                "Average": 0.3225
+            },
+            {
+                "Category": "MR-E1.3",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.214286,
+                "Claude 4.5 Sonnet": 0.261905,
+                "Llama 3.3": 0.333333,
+                "DeepSeek Chat": 0.357143,
+                "o4-mini": 0.380952,
+                "Deepseek Reasoner": 0.452381,
+                "Average": 0.333333
+            },
+            {
+                "Category": "MR-E1.4",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.225,
+                "Claude 4.5 Sonnet": 0.125,
+                "Llama 3.3": 0.17,
+                "DeepSeek Chat": 0.17,
+                "o4-mini": 0.165,
+                "Deepseek Reasoner": 0.28,
+                "Average": 0.189167
+            },
+            {
+                "Category": "MR-E1.5",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.409091,
+                "Claude 4.5 Sonnet": 0.318182,
+                "Llama 3.3": 0.409091,
+                "DeepSeek Chat": 0.363636,
+                "o4-mini": 0.318182,
+                "Deepseek Reasoner": 0.318182,
+                "Average": 0.356061
+            },
+            {
+                "Category": "MR-E1.6",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.165,
+                "Claude 4.5 Sonnet": 0.105,
+                "Llama 3.3": 0.125,
+                "DeepSeek Chat": 0.16,
+                "o4-mini": 0.17,
+                "Deepseek Reasoner": 0.21,
+                "Average": 0.155833
+            },
+            {
+                "Category": "MR-E2.1",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.25,
+                "Claude 4.5 Sonnet": 0.25,
+                "Llama 3.3": 0.166667,
+                "DeepSeek Chat": 0.083333,
+                "o4-mini": 0.083333,
+                "Deepseek Reasoner": 0.166667,
+                "Average": 0.166667
+            },
+            {
+                "Category": "MR-E2.2",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.0,
+                "Claude 4.5 Sonnet": 0.0,
+                "Llama 3.3": 0.133333,
+                "DeepSeek Chat": 0.066667,
+                "o4-mini": 0.133333,
+                "Deepseek Reasoner": 0.066667,
+                "Average": 0.066667
+            },
+            {
+                "Category": "MR-E2.3",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.0,
+                "Claude 4.5 Sonnet": 0.0,
+                "Llama 3.3": 0.0,
+                "DeepSeek Chat": 0.0,
+                "o4-mini": 0.0,
+                "Deepseek Reasoner": 0.0,
+                "Average": 0.0
+            },
+            {
+                "Category": "MR-E2.4",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.26,
+                "Claude 4.5 Sonnet": 0.295,
+                "Llama 3.3": 0.345,
+                "DeepSeek Chat": 0.28,
+                "o4-mini": 0.32,
+                "Deepseek Reasoner": 0.28,
+                "Average": 0.296667
+            },
+            {
+                "Category": "MR-S1",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.295,
+                "Claude 4.5 Sonnet": 0.285,
+                "Llama 3.3": 0.34,
+                "DeepSeek Chat": 0.355,
+                "o4-mini": 0.305,
+                "Deepseek Reasoner": 0.345,
+                "Average": 0.320833
+            },
+            {
+                "Category": "MR-S2",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.345,
+                "Claude 4.5 Sonnet": 0.351759,
+                "Llama 3.3": 0.365,
+                "DeepSeek Chat": 0.345,
+                "o4-mini": 0.25,
+                "Deepseek Reasoner": 0.385,
+                "Average": 0.340284
+            },
+            {
+                "Category": "MR-P1",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.2,
+                "Claude 4.5 Sonnet": 0.085,
+                "Llama 3.3": 0.165,
+                "DeepSeek Chat": 0.1,
+                "o4-mini": 0.13,
+                "Deepseek Reasoner": 0.21,
+                "Average": 0.148333
+            },
+            {
+                "Category": "MR-P2",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.17,
+                "Claude 4.5 Sonnet": 0.125,
+                "Llama 3.3": 0.125,
+                "DeepSeek Chat": 0.195,
+                "o4-mini": 0.14,
+                "Deepseek Reasoner": 0.2,
+                "Average": 0.159167
+            },
+            {
+                "Category": "MR-P3",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.185,
+                "Claude 4.5 Sonnet": 0.085,
+                "Llama 3.3": 0.16,
+                "DeepSeek Chat": 0.13,
+                "o4-mini": 0.115,
+                "Deepseek Reasoner": 0.215,
+                "Average": 0.148333
+            },
+            {
+                "Category": "MR-P4",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.215,
+                "Claude 4.5 Sonnet": 0.175,
+                "Llama 3.3": 0.22,
+                "DeepSeek Chat": 0.245,
+                "o4-mini": 0.18,
+                "Deepseek Reasoner": 0.295,
+                "Average": 0.221667
+            },
+            {
+                "Category": "MR-P5",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.185,
+                "Claude 4.5 Sonnet": 0.06,
+                "Llama 3.3": 0.135,
+                "DeepSeek Chat": 0.125,
+                "o4-mini": 0.155,
+                "Deepseek Reasoner": 0.175,
+                "Average": 0.139167
+            },
+            {
+                "Category": "MR-C1",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.44,
+                "Claude 4.5 Sonnet": 0.255,
+                "Llama 3.3": 0.225,
+                "DeepSeek Chat": 0.255,
+                "o4-mini": 0.275,
+                "Deepseek Reasoner": 0.375,
+                "Average": 0.304167
+            },
+            {
+                "Category": "MR-C2",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.395,
+                "Claude 4.5 Sonnet": 0.34,
+                "Llama 3.3": 0.355,
+                "DeepSeek Chat": 0.395,
+                "o4-mini": 0.235,
+                "Deepseek Reasoner": 0.53,
+                "Average": 0.375
+            },
+            {
+                "Category": "MR-C3",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.34,
+                "Claude 4.5 Sonnet": 0.295,
+                "Llama 3.3": 0.475,
+                "DeepSeek Chat": 0.315,
+                "o4-mini": 0.28,
+                "Deepseek Reasoner": 0.3,
+                "Average": 0.334167
+            },
+            {
+                "Category": "Average",
+                "Shot_Type": "zero",
+                "Prompt_Type": "cot",
+                "GPT-5.2": 0.267551,
+                "Claude 4.5 Sonnet": 0.208414,
+                "Llama 3.3": 0.254287,
+                "DeepSeek Chat": 0.247169,
+                "o4-mini": 0.220641,
+                "Deepseek Reasoner": 0.294403,
+                "Average": 0.248746
+            }
+        ]
+    },
+    "source_counts": {
+        "model_category_counts": {
+            "Claude 4.5 Sonnet::MR-C": {
+                "total_count": 600,
+                "violation_count": 178
+            },
+            "Claude 4.5 Sonnet::MR-E": {
+                "total_count": 1091,
+                "violation_count": 233
+            },
+            "Claude 4.5 Sonnet::MR-P": {
+                "total_count": 1000,
+                "violation_count": 106
+            },
+            "Claude 4.5 Sonnet::MR-S": {
+                "total_count": 399,
+                "violation_count": 127
+            },
+            "DeepSeek Chat::MR-C": {
+                "total_count": 600,
+                "violation_count": 193
+            },
+            "DeepSeek Chat::MR-E": {
+                "total_count": 1091,
+                "violation_count": 272
+            },
+            "DeepSeek Chat::MR-P": {
+                "total_count": 1000,
+                "violation_count": 159
+            },
+            "DeepSeek Chat::MR-S": {
+                "total_count": 400,
+                "violation_count": 140
+            },
+            "Deepseek Reasoner::MR-C": {
+                "total_count": 600,
+                "violation_count": 241
+            },
+            "Deepseek Reasoner::MR-E": {
+                "total_count": 1091,
+                "violation_count": 304
+            },
+            "Deepseek Reasoner::MR-P": {
+                "total_count": 1000,
+                "violation_count": 219
+            },
+            "Deepseek Reasoner::MR-S": {
+                "total_count": 400,
+                "violation_count": 146
+            },
+            "GPT-5.2::MR-C": {
+                "total_count": 600,
+                "violation_count": 235
+            },
+            "GPT-5.2::MR-E": {
+                "total_count": 1091,
+                "violation_count": 273
+            },
+            "GPT-5.2::MR-P": {
+                "total_count": 1000,
+                "violation_count": 191
+            },
+            "GPT-5.2::MR-S": {
+                "total_count": 400,
+                "violation_count": 128
+            },
+            "Llama 3.3::MR-C": {
+                "total_count": 600,
+                "violation_count": 211
+            },
+            "Llama 3.3::MR-E": {
+                "total_count": 1091,
+                "violation_count": 273
+            },
+            "Llama 3.3::MR-P": {
+                "total_count": 1000,
+                "violation_count": 161
+            },
+            "Llama 3.3::MR-S": {
+                "total_count": 400,
+                "violation_count": 141
+            },
+            "o4-mini::MR-C": {
+                "total_count": 600,
+                "violation_count": 158
+            },
+            "o4-mini::MR-E": {
+                "total_count": 1091,
+                "violation_count": 269
+            },
+            "o4-mini::MR-P": {
+                "total_count": 1000,
+                "violation_count": 144
+            },
+            "o4-mini::MR-S": {
+                "total_count": 400,
+                "violation_count": 111
+            }
+        },
+        "model_rule_counts": {
+            "Claude 4.5 Sonnet::MR-C1": {
+                "total_count": 200,
+                "violation_count": 51
+            },
+            "Claude 4.5 Sonnet::MR-C2": {
+                "total_count": 200,
+                "violation_count": 68
+            },
+            "Claude 4.5 Sonnet::MR-C3": {
+                "total_count": 200,
+                "violation_count": 59
+            },
+            "Claude 4.5 Sonnet::MR-E1.1": {
+                "total_count": 200,
+                "violation_count": 52
+            },
+            "Claude 4.5 Sonnet::MR-E1.2": {
+                "total_count": 200,
+                "violation_count": 55
+            },
+            "Claude 4.5 Sonnet::MR-E1.3": {
+                "total_count": 42,
+                "violation_count": 11
+            },
+            "Claude 4.5 Sonnet::MR-E1.4": {
+                "total_count": 200,
+                "violation_count": 25
+            },
+            "Claude 4.5 Sonnet::MR-E1.5": {
+                "total_count": 22,
+                "violation_count": 7
+            },
+            "Claude 4.5 Sonnet::MR-E1.6": {
+                "total_count": 200,
+                "violation_count": 21
+            },
+            "Claude 4.5 Sonnet::MR-E2.1": {
+                "total_count": 12,
+                "violation_count": 3
+            },
+            "Claude 4.5 Sonnet::MR-E2.2": {
+                "total_count": 15,
+                "violation_count": 0
+            },
+            "Claude 4.5 Sonnet::MR-E2.4": {
+                "total_count": 200,
+                "violation_count": 59
+            },
+            "Claude 4.5 Sonnet::MR-P1": {
+                "total_count": 200,
+                "violation_count": 17
+            },
+            "Claude 4.5 Sonnet::MR-P2": {
+                "total_count": 200,
+                "violation_count": 25
+            },
+            "Claude 4.5 Sonnet::MR-P3": {
+                "total_count": 200,
+                "violation_count": 17
+            },
+            "Claude 4.5 Sonnet::MR-P4": {
+                "total_count": 200,
+                "violation_count": 35
+            },
+            "Claude 4.5 Sonnet::MR-P5": {
+                "total_count": 200,
+                "violation_count": 12
+            },
+            "Claude 4.5 Sonnet::MR-S1": {
+                "total_count": 200,
+                "violation_count": 57
+            },
+            "Claude 4.5 Sonnet::MR-S2": {
+                "total_count": 199,
+                "violation_count": 70
+            },
+            "DeepSeek Chat::MR-C1": {
+                "total_count": 200,
+                "violation_count": 51
+            },
+            "DeepSeek Chat::MR-C2": {
+                "total_count": 200,
+                "violation_count": 79
+            },
+            "DeepSeek Chat::MR-C3": {
+                "total_count": 200,
+                "violation_count": 63
+            },
+            "DeepSeek Chat::MR-E1.1": {
+                "total_count": 200,
+                "violation_count": 51
+            },
+            "DeepSeek Chat::MR-E1.2": {
+                "total_count": 200,
+                "violation_count": 74
+            },
+            "DeepSeek Chat::MR-E1.3": {
+                "total_count": 42,
+                "violation_count": 15
+            },
+            "DeepSeek Chat::MR-E1.4": {
+                "total_count": 200,
+                "violation_count": 34
+            },
+            "DeepSeek Chat::MR-E1.5": {
+                "total_count": 22,
+                "violation_count": 8
+            },
+            "DeepSeek Chat::MR-E1.6": {
+                "total_count": 200,
+                "violation_count": 32
+            },
+            "DeepSeek Chat::MR-E2.1": {
+                "total_count": 12,
+                "violation_count": 1
+            },
+            "DeepSeek Chat::MR-E2.2": {
+                "total_count": 15,
+                "violation_count": 1
+            },
+            "DeepSeek Chat::MR-E2.4": {
+                "total_count": 200,
+                "violation_count": 56
+            },
+            "DeepSeek Chat::MR-P1": {
+                "total_count": 200,
+                "violation_count": 20
+            },
+            "DeepSeek Chat::MR-P2": {
+                "total_count": 200,
+                "violation_count": 39
+            },
+            "DeepSeek Chat::MR-P3": {
+                "total_count": 200,
+                "violation_count": 26
+            },
+            "DeepSeek Chat::MR-P4": {
+                "total_count": 200,
+                "violation_count": 49
+            },
+            "DeepSeek Chat::MR-P5": {
+                "total_count": 200,
+                "violation_count": 25
+            },
+            "DeepSeek Chat::MR-S1": {
+                "total_count": 200,
+                "violation_count": 71
+            },
+            "DeepSeek Chat::MR-S2": {
+                "total_count": 200,
+                "violation_count": 69
+            },
+            "Deepseek Reasoner::MR-C1": {
+                "total_count": 200,
+                "violation_count": 75
+            },
+            "Deepseek Reasoner::MR-C2": {
+                "total_count": 200,
+                "violation_count": 106
+            },
+            "Deepseek Reasoner::MR-C3": {
+                "total_count": 200,
+                "violation_count": 60
+            },
+            "Deepseek Reasoner::MR-E1.1": {
+                "total_count": 200,
+                "violation_count": 57
+            },
+            "Deepseek Reasoner::MR-E1.2": {
+                "total_count": 200,
+                "violation_count": 64
+            },
+            "Deepseek Reasoner::MR-E1.3": {
+                "total_count": 42,
+                "violation_count": 19
+            },
+            "Deepseek Reasoner::MR-E1.4": {
+                "total_count": 200,
+                "violation_count": 56
+            },
+            "Deepseek Reasoner::MR-E1.5": {
+                "total_count": 22,
+                "violation_count": 7
+            },
+            "Deepseek Reasoner::MR-E1.6": {
+                "total_count": 200,
+                "violation_count": 42
+            },
+            "Deepseek Reasoner::MR-E2.1": {
+                "total_count": 12,
+                "violation_count": 2
+            },
+            "Deepseek Reasoner::MR-E2.2": {
+                "total_count": 15,
+                "violation_count": 1
+            },
+            "Deepseek Reasoner::MR-E2.4": {
+                "total_count": 200,
+                "violation_count": 56
+            },
+            "Deepseek Reasoner::MR-P1": {
+                "total_count": 200,
+                "violation_count": 42
+            },
+            "Deepseek Reasoner::MR-P2": {
+                "total_count": 200,
+                "violation_count": 40
+            },
+            "Deepseek Reasoner::MR-P3": {
+                "total_count": 200,
+                "violation_count": 43
+            },
+            "Deepseek Reasoner::MR-P4": {
+                "total_count": 200,
+                "violation_count": 59
+            },
+            "Deepseek Reasoner::MR-P5": {
+                "total_count": 200,
+                "violation_count": 35
+            },
+            "Deepseek Reasoner::MR-S1": {
+                "total_count": 200,
+                "violation_count": 69
+            },
+            "Deepseek Reasoner::MR-S2": {
+                "total_count": 200,
+                "violation_count": 77
+            },
+            "GPT-5.2::MR-C1": {
+                "total_count": 200,
+                "violation_count": 88
+            },
+            "GPT-5.2::MR-C2": {
+                "total_count": 200,
+                "violation_count": 79
+            },
+            "GPT-5.2::MR-C3": {
+                "total_count": 200,
+                "violation_count": 68
+            },
+            "GPT-5.2::MR-E1.1": {
+                "total_count": 200,
+                "violation_count": 54
+            },
+            "GPT-5.2::MR-E1.2": {
+                "total_count": 200,
+                "violation_count": 68
+            },
+            "GPT-5.2::MR-E1.3": {
+                "total_count": 42,
+                "violation_count": 9
+            },
+            "GPT-5.2::MR-E1.4": {
+                "total_count": 200,
+                "violation_count": 45
+            },
+            "GPT-5.2::MR-E1.5": {
+                "total_count": 22,
+                "violation_count": 9
+            },
+            "GPT-5.2::MR-E1.6": {
+                "total_count": 200,
+                "violation_count": 33
+            },
+            "GPT-5.2::MR-E2.1": {
+                "total_count": 12,
+                "violation_count": 3
+            },
+            "GPT-5.2::MR-E2.2": {
+                "total_count": 15,
+                "violation_count": 0
+            },
+            "GPT-5.2::MR-E2.4": {
+                "total_count": 200,
+                "violation_count": 52
+            },
+            "GPT-5.2::MR-P1": {
+                "total_count": 200,
+                "violation_count": 40
+            },
+            "GPT-5.2::MR-P2": {
+                "total_count": 200,
+                "violation_count": 34
+            },
+            "GPT-5.2::MR-P3": {
+                "total_count": 200,
+                "violation_count": 37
+            },
+            "GPT-5.2::MR-P4": {
+                "total_count": 200,
+                "violation_count": 43
+            },
+            "GPT-5.2::MR-P5": {
+                "total_count": 200,
+                "violation_count": 37
+            },
+            "GPT-5.2::MR-S1": {
+                "total_count": 200,
+                "violation_count": 59
+            },
+            "GPT-5.2::MR-S2": {
+                "total_count": 200,
+                "violation_count": 69
+            },
+            "Llama 3.3::MR-C1": {
+                "total_count": 200,
+                "violation_count": 45
+            },
+            "Llama 3.3::MR-C2": {
+                "total_count": 200,
+                "violation_count": 71
+            },
+            "Llama 3.3::MR-C3": {
+                "total_count": 200,
+                "violation_count": 95
+            },
+            "Llama 3.3::MR-E1.1": {
+                "total_count": 200,
+                "violation_count": 54
+            },
+            "Llama 3.3::MR-E1.2": {
+                "total_count": 200,
+                "violation_count": 64
+            },
+            "Llama 3.3::MR-E1.3": {
+                "total_count": 42,
+                "violation_count": 14
+            },
+            "Llama 3.3::MR-E1.4": {
+                "total_count": 200,
+                "violation_count": 34
+            },
+            "Llama 3.3::MR-E1.5": {
+                "total_count": 22,
+                "violation_count": 9
+            },
+            "Llama 3.3::MR-E1.6": {
+                "total_count": 200,
+                "violation_count": 25
+            },
+            "Llama 3.3::MR-E2.1": {
+                "total_count": 12,
+                "violation_count": 2
+            },
+            "Llama 3.3::MR-E2.2": {
+                "total_count": 15,
+                "violation_count": 2
+            },
+            "Llama 3.3::MR-E2.4": {
+                "total_count": 200,
+                "violation_count": 69
+            },
+            "Llama 3.3::MR-P1": {
+                "total_count": 200,
+                "violation_count": 33
+            },
+            "Llama 3.3::MR-P2": {
+                "total_count": 200,
+                "violation_count": 25
+            },
+            "Llama 3.3::MR-P3": {
+                "total_count": 200,
+                "violation_count": 32
+            },
+            "Llama 3.3::MR-P4": {
+                "total_count": 200,
+                "violation_count": 44
+            },
+            "Llama 3.3::MR-P5": {
+                "total_count": 200,
+                "violation_count": 27
+            },
+            "Llama 3.3::MR-S1": {
+                "total_count": 200,
+                "violation_count": 68
+            },
+            "Llama 3.3::MR-S2": {
+                "total_count": 200,
+                "violation_count": 73
+            },
+            "o4-mini::MR-C1": {
+                "total_count": 200,
+                "violation_count": 55
+            },
+            "o4-mini::MR-C2": {
+                "total_count": 200,
+                "violation_count": 47
+            },
+            "o4-mini::MR-C3": {
+                "total_count": 200,
+                "violation_count": 56
+            },
+            "o4-mini::MR-E1.1": {
+                "total_count": 200,
+                "violation_count": 50
+            },
+            "o4-mini::MR-E1.2": {
+                "total_count": 200,
+                "violation_count": 62
+            },
+            "o4-mini::MR-E1.3": {
+                "total_count": 42,
+                "violation_count": 16
+            },
+            "o4-mini::MR-E1.4": {
+                "total_count": 200,
+                "violation_count": 33
+            },
+            "o4-mini::MR-E1.5": {
+                "total_count": 22,
+                "violation_count": 7
+            },
+            "o4-mini::MR-E1.6": {
+                "total_count": 200,
+                "violation_count": 34
+            },
+            "o4-mini::MR-E2.1": {
+                "total_count": 12,
+                "violation_count": 1
+            },
+            "o4-mini::MR-E2.2": {
+                "total_count": 15,
+                "violation_count": 2
+            },
+            "o4-mini::MR-E2.4": {
+                "total_count": 200,
+                "violation_count": 64
+            },
+            "o4-mini::MR-P1": {
+                "total_count": 200,
+                "violation_count": 26
+            },
+            "o4-mini::MR-P2": {
+                "total_count": 200,
+                "violation_count": 28
+            },
+            "o4-mini::MR-P3": {
+                "total_count": 200,
+                "violation_count": 23
+            },
+            "o4-mini::MR-P4": {
+                "total_count": 200,
+                "violation_count": 36
+            },
+            "o4-mini::MR-P5": {
+                "total_count": 200,
+                "violation_count": 31
+            },
+            "o4-mini::MR-S1": {
+                "total_count": 200,
+                "violation_count": 61
+            },
+            "o4-mini::MR-S2": {
+                "total_count": 200,
+                "violation_count": 50
+            }
+        },
+        "model_totals": {
+            "GPT-5.2": {
+                "total_count": 3091,
+                "violation_count": 827
+            },
+            "o4-mini": {
+                "total_count": 3091,
+                "violation_count": 682
+            },
+            "Claude 4.5 Sonnet": {
+                "total_count": 3090,
+                "violation_count": 644
+            },
+            "DeepSeek Chat": {
+                "total_count": 3091,
+                "violation_count": 764
+            },
+            "Deepseek Reasoner": {
+                "total_count": 3091,
+                "violation_count": 910
+            },
+            "Llama 3.3": {
+                "total_count": 3091,
+                "violation_count": 786
+            }
+        }
+    },
+    "output_files": {
+        "category_csv": "/Users/zenghui/Code/LGMT_code/rqs/rq3/rq3_sensitivity_zero_cot_category.csv",
+        "rule_csv": "/Users/zenghui/Code/LGMT_code/rqs/rq3/rq3_sensitivity_zero_cot_rule.csv",
+        "json": "/Users/zenghui/Code/LGMT_code/rqs/rq3/rq3_sensitivity_zero_cot.json"
+    }
+}
