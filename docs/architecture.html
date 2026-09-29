@@ -3,127 +3,149 @@
 <head>
 <meta charset="utf-8">
 <style>
-  @page { size: 1680px 640px; margin: 0; }
+  @page { size: 1760px 760px; margin: 0; }
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
-    width: 1680px; height: 640px;
-    font-family: -apple-system, "Helvetica Neue", "Segoe UI", Arial, sans-serif;
-    background: linear-gradient(135deg, #f7f9fc 0%, #eef2f8 100%);
+    width: 1760px; height: 760px;
+    font-family: Helvetica, Arial, "DejaVu Sans", sans-serif;
+    background: #ffffff;
     display: flex; align-items: center; justify-content: center;
   }
-  .canvas { width: 1600px; }
+  .canvas { width: 1680px; }
 
-  /* ---------- top interface pills ---------- */
-  .ifaces { display: flex; gap: 18px; justify-content: center; margin-bottom: 34px; }
-  .pill {
-    background: #ffffff; border: 1.5px solid #d7e0ee; border-radius: 999px;
-    padding: 12px 26px; font-size: 19px; color: #33507a; font-weight: 600;
-    box-shadow: 0 2px 8px rgba(47,95,143,.08);
+  /* ---------- LGMT dashed container ---------- */
+  .lgmt-box {
+    border: 2px dashed #8aa5c4; border-radius: 14px;
+    padding: 44px 26px 24px; position: relative;
   }
-  .pill.cli { background: #2f5f8f; border-color: #2f5f8f; color: #fff; font-family: "SF Mono", Menlo, monospace; font-size: 18px; }
-  .pill.cli b { color: #9cc3ee; font-weight: 600; }
+  .lgmt-tag {
+    position: absolute; top: -16px; left: 28px; background: #fff;
+    font-size: 22px; font-weight: 700; color: #33507a; padding: 0 14px;
+    letter-spacing: 0.02em;
+  }
 
-  /* ---------- pipeline ---------- */
-  .flow { display: flex; align-items: stretch; gap: 0; }
+  .flow { display: flex; align-items: stretch; }
   .stage {
-    flex: 1; background: #ffffff; border-radius: 18px; padding: 22px 20px 20px;
-    border: 1px solid #e2e8f2;
-    box-shadow: 0 6px 18px rgba(30,55,90,.07);
-    position: relative;
+    flex: 1; border-radius: 10px; border: 1.5px solid #b9c6d8;
+    padding: 16px 16px 14px; background: #fff;
   }
-  .stage + .arrow { align-self: center; margin: 0 10px; color: #2f5f8f; font-size: 30px; font-weight: 700; }
-  .num {
-    width: 34px; height: 34px; border-radius: 50%;
-    background: linear-gradient(135deg, #3a6ea5, #2f5f8f); color: #fff;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 18px; font-weight: 700; margin-bottom: 12px;
-    box-shadow: 0 3px 8px rgba(47,95,143,.35);
-  }
-  .stage h3 { font-size: 21px; color: #17273f; margin-bottom: 12px; letter-spacing: -0.01em; }
+  .stage h3 { font-size: 21px; color: #17273f; margin-bottom: 8px; }
   .stage ul { list-style: none; }
-  .stage li { font-size: 16.5px; color: #5b6b82; line-height: 1.5; padding-left: 14px; position: relative; }
-  .stage li::before { content: "·"; position: absolute; left: 0; color: #3a6ea5; font-weight: 700; }
-  .stage li em { font-style: normal; color: #33507a; font-weight: 600; }
-  .io {
-    margin-top: 14px; display: inline-block; font-family: "SF Mono", Menlo, monospace;
-    font-size: 14.5px; background: #eef7f0; color: #2f7d4f; border: 1px solid #bfe0c9;
-    border-radius: 8px; padding: 5px 12px;
-  }
+  .stage li { font-size: 15.5px; color: #4a5a70; line-height: 1.45; }
+  .stage li b { color: #33507a; }
 
-  /* ---------- extension chips ---------- */
-  .ext { display: flex; gap: 16px; margin-top: 34px; align-items: center; }
-  .ext .label { font-size: 18px; font-weight: 700; color: #b45309; white-space: nowrap; }
-  .chip {
-    flex: 1; text-align: center; background: #fdf6ea; border: 1.5px solid #ecd9b0;
-    color: #92600c; border-radius: 12px; padding: 12px 10px; font-size: 15px; font-weight: 500;
+  .c-gray   { background: #f2f2f2; border-color: #c9c9c9; }
+  .c-yellow { background: #fff6d6; border-color: #d9b84a; }
+  .c-blue   { background: #e4eefb; border-color: #7fa3d4; }
+  .c-green  { background: #e7f4e4; border-color: #7fb069; }
+
+  .conn { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 84px; }
+  .conn .lbl { font-family: "SF Mono", Menlo, monospace; font-size: 12.5px; color: #555; text-align: center; margin-bottom: 4px; }
+  .conn .arr { color: #333; font-size: 26px; font-weight: 700; }
+
+  .verdict { display: flex; gap: 8px; margin-top: 10px; }
+  .vb { font-size: 13px; font-weight: 700; border-radius: 6px; padding: 3px 10px; }
+  .pass { background: #d7ecd2; color: #2f7d4f; border: 1px solid #7fb069; }
+  .fail { background: #f8d7d2; color: #b3402f; border: 1px solid #d9837a; }
+
+  /* ---------- external SUT below the container ---------- */
+  .sut-row { display: flex; justify-content: center; margin-top: 0; position: relative; }
+  .sut {
+    width: 430px; background: #ffffff; border: 1.5px solid #b9c6d8; border-radius: 10px;
+    padding: 14px 18px; position: relative;
   }
+  .sut .tag {
+    position: absolute; top: -13px; left: 18px; background: #fff; padding: 0 10px;
+    font-size: 14px; font-weight: 700; color: #6b7a90;
+  }
+  .sut h3 { font-size: 19px; color: #17273f; margin-bottom: 8px; }
+  .models { display: flex; gap: 8px; flex-wrap: wrap; }
+  .m { font-size: 13px; font-family: "SF Mono", Menlo, monospace; color: #4a5a70;
+       background: #f4f6f9; border: 1px solid #d5dce6; border-radius: 6px; padding: 3px 9px; }
+
+  .elbow { color: #333; font-size: 24px; font-weight: 700; line-height: 1; }
+  .elbl { font-family: "SF Mono", Menlo, monospace; font-size: 12.5px; color: #555; }
+
+  /* ---------- running example strip ---------- */
+  .example {
+    margin-top: 22px; border: 1.5px solid #d5dce6; border-radius: 10px;
+    padding: 12px 20px; display: flex; align-items: center; gap: 16px;
+    font-size: 15.5px; color: #37455a; background: #fafbfd;
+  }
+  .example .etag { font-size: 13px; font-weight: 700; color: #6b7a90; white-space: nowrap; }
+  .example .q { font-style: italic; }
+  .example .mr { font-family: "SF Mono", Menlo, monospace; font-size: 13px; color: #33507a; white-space: nowrap; }
+  .example .out { font-weight: 700; }
 </style>
 </head>
 <body>
 <div class="canvas">
 
-  <div class="ifaces">
-    <div class="pill cli"><b>CLI</b>&nbsp; lgmt build-mgs · run · report · audit · demo</div>
-    <div class="pill">Python API</div>
-    <div class="pill">Web Demo</div>
-    <div class="pill">Docker</div>
-  </div>
-
-  <div class="flow">
-    <div class="stage">
-      <div class="num">1</div><h3>Case Loader</h3>
-      <ul>
-        <li>NL+FOL dual schema</li>
-        <li><em>FOLIO · LogicNLI · ProverQA</em></li>
-        <li>custom JSONL</li>
-      </ul>
-      <div class="io">source cases (JSONL)</div>
-    </div>
-    <div class="arrow">→</div>
-    <div class="stage">
-      <div class="num">2</div><h3>MR Engine</h3>
-      <ul>
-        <li>FOL AST rewriting</li>
-        <li><em>20 built-in MRs</em></li>
-        <li>E / S / P / C levels</li>
-      </ul>
-    </div>
-    <div class="arrow">→</div>
-    <div class="stage">
-      <div class="num">3</div><h3>NL Realizer</h3>
-      <ul>
-        <li>FOL-to-NL via LLM</li>
-        <li>strict translator</li>
-        <li><em>fidelity audit</em></li>
-      </ul>
-    </div>
-    <div class="arrow">→</div>
-    <div class="stage">
-      <div class="num">4</div><h3>Inference Runner</h3>
-      <ul>
-        <li>any OpenAI-compatible endpoint</li>
-        <li><em>4 prompt strategies</em></li>
-        <li>schema-validated parsing</li>
-      </ul>
-    </div>
-    <div class="arrow">→</div>
-    <div class="stage">
-      <div class="num">5</div><h3>Oracle &amp; Reporter</h3>
-      <ul>
-        <li>consistency check</li>
-        <li><em>MVR · Acc_cons · HDR</em></li>
-        <li>HTML defect report</li>
-      </ul>
-      <div class="io">defects + metrics</div>
+  <div class="lgmt-box">
+    <div class="lgmt-tag">LGMT</div>
+    <div class="flow">
+      <div class="stage c-gray">
+        <h3>Case Loader</h3>
+        <ul>
+          <li>NL+FOL dual schema</li>
+          <li><b>FOLIO · LogicNLI · ProverQA</b></li>
+          <li>custom JSONL</li>
+        </ul>
+      </div>
+      <div class="conn"><div class="lbl">source case</div><div class="arr">→</div></div>
+      <div class="stage c-yellow">
+        <h3>MR Engine</h3>
+        <ul>
+          <li>FOL AST rewriting</li>
+          <li><b>20 built-in MRs</b></li>
+          <li>E / S / P / C levels</li>
+        </ul>
+      </div>
+      <div class="conn"><div class="lbl">MR instance</div><div class="arr">→</div></div>
+      <div class="stage c-blue">
+        <h3>NL Realizer</h3>
+        <ul>
+          <li>FOL-to-NL via LLM</li>
+          <li>strict translator</li>
+          <li><b>fidelity audit</b></li>
+        </ul>
+      </div>
+      <div style="width:84px"></div>
+      <div class="stage c-green">
+        <h3>Oracle &amp; Reporter</h3>
+        <ul>
+          <li>consistency check</li>
+          <li><b>MVR · Acc_cons · HDR</b></li>
+          <li>HTML defect report</li>
+        </ul>
+        <div class="verdict"><span class="vb pass">✓ consistent</span><span class="vb fail">✗ violation</span></div>
+      </div>
     </div>
   </div>
 
-  <div class="ext">
-    <div class="label">Extension points</div>
-    <div class="chip">custom MRs (3-method plugin, Z3-checked)</div>
-    <div class="chip">custom datasets (open JSONL schema)</div>
-    <div class="chip">any OpenAI-compatible model — API/vLLM/Ollama</div>
-    <div class="chip">offline mock (no key, no network)</div>
+  <div class="sut-row">
+    <div style="display:flex; flex-direction:column; align-items:center; margin-right:22px;">
+      <div class="elbl">NL test pair</div><div class="elbow">↓</div>
+    </div>
+    <div class="sut">
+      <div class="tag">SUT · external</div>
+      <h3>Inference Runner — any OpenAI-compatible endpoint</h3>
+      <div class="models">
+        <span class="m">GPT-5.2</span><span class="m">Claude</span><span class="m">DeepSeek</span>
+        <span class="m">Llama</span><span class="m">vLLM</span><span class="m">Ollama</span>
+      </div>
+    </div>
+    <div style="display:flex; flex-direction:column; align-items:center; margin-left:22px;">
+      <div class="elbow">↑</div><div class="elbl">verdicts</div>
+    </div>
+  </div>
+
+  <div class="example">
+    <span class="etag">example · contraposition</span>
+    <span class="q">"All birds can fly. Tweety is a bird. ⊨ Tweety can fly?"</span>
+    <span class="mr">→ MR-E1.1 →</span>
+    <span class="q">"Anything that cannot fly is not a bird. Tweety is a bird. ⊨ Tweety can fly?"</span>
+    <span class="out">Valid ✓ / Invalid ✗ ⇒ <span style="color:#b3402f">violation</span></span>
   </div>
 
 </div>
