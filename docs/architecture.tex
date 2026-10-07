@@ -1,11 +1,12 @@
-% LGMT architecture figure (TikZ, standalone).
+% LGMT architecture figure (TikZ, standalone, single-layer positioning).
 % Build PDF:  pdflatex fig-architecture.tex
 % Build PNG:  pdftoppm -png -r 200 fig-architecture.pdf architecture
-\documentclass[border=8pt]{standalone}
+\documentclass[border=10pt]{standalone}
 \usepackage{tikz}
 \usetikzlibrary{positioning,fit,arrows.meta,calc}
 \usepackage[T1]{fontenc}
 \usepackage{helvet}\renewcommand{\familydefault}{\sfdefault}
+\usepackage[varqu,varl,scaled=0.92]{inconsolata}
 
 \definecolor{ink}{HTML}{17273F}
 \definecolor{mute}{HTML}{4A5A70}
@@ -23,92 +24,89 @@
 \definecolor{okgreen}{HTML}{2F7D4F}
 
 \begin{document}
+\hyphenpenalty=10000\exhyphenpenalty=10000
 \begin{tikzpicture}[
   font=\sffamily,
-  stage/.style={draw, rounded corners=4pt, line width=0.8pt, align=left,
-                inner sep=7pt, text=ink},
+  stage/.style={draw, rounded corners=4pt, line width=0.8pt, text=ink,
+                minimum width=53mm, minimum height=50mm, inner sep=0pt},
+  stagetitle/.style={font=\sffamily\bfseries\large, text=ink, anchor=north west},
+  stagesub/.style={font=\sffamily\footnotesize, text=mute, anchor=north west, align=flush left},
   art/.style={draw=bd, fill=white, rounded corners=3pt, line width=0.6pt,
-              font=\ttfamily\scriptsize, align=left, inner sep=5pt, text=ink},
-  lbl/.style={font=\ttfamily\tiny, text=mute, align=center},
+              font=\ttfamily\scriptsize, align=flush left, inner sep=4.5pt, text=ink,
+              anchor=north west, text width=42mm},
+  chip/.style={draw=cyelb, fill=white, rounded corners=2.5pt, line width=0.6pt,
+               font=\ttfamily\tiny\bfseries, inner sep=2.5pt, text=ink!80, anchor=west},
+  lbl/.style={font=\ttfamily\scriptsize, text=mute, align=center},
   flow/.style={-{Triangle[length=6pt,width=6pt]}, line width=1pt, draw=ink!80},
 ]
 
-% ===================== pipeline stages (inside LGMT box) =====================
-\node[stage, fill=cgray, draw=bd!160, text width=44mm] (s1) {
-  {\bfseries\large Case Loader}\\[2pt]
-  {\footnotesize NL+FOL dual schema\\ FOLIO / LogicNLI / ProverQA / custom}\\[4pt]
-  \begin{tikzpicture}
-    \node[art, text width=41mm] {\textcolor{faded}{\# premise--conclusion pair}\\
-      \textbf{premises\_logic:} ["$\forall$x.(Bird(x) $\to$ Fly(x))",\\
-      \hspace*{6pt}"Bird(tweety)"]\\
-      \textbf{conclusion\_logic:} "Fly(tweety)"\\
-      \textbf{premises\_text:} ["All birds can fly.", \ldots]};
-  \end{tikzpicture}
-};
+% ===================== Stage 1: Case Loader =====================
+\node[stage, fill=cgray, draw=bd!160] (s1) at (0,0) {};
+\node[stagetitle] at ($(s1.north west)+(3.5mm,-3mm)$) {Case Loader};
+\node[stagesub] at ($(s1.north west)+(3.5mm,-8.5mm)$) {NL+FOL dual schema; FOLIO /\\ LogicNLI / ProverQA / custom};
+\node[art] (a1) at ($(s1.north west)+(3.5mm,-15mm)$) {
+  \textcolor{faded}{\# premise--conclusion pair $\langle\Gamma,q\rangle$}\\
+  \textbf{premises\_logic:} ["$\forall$x.(Bird(x)\\ \hspace*{4pt}$\to$ Fly(x))", "Bird(tweety)"]\\
+  \textbf{conclusion\_logic:} "Fly(tweety)"\\
+  \textbf{premises\_text:} ["All birds can\\ \hspace*{4pt}fly.", \ldots]};
 
-\node[stage, fill=cyellow, draw=cyelb, text width=44mm, right=15mm of s1.north east, anchor=north west] (s2) {
-  {\bfseries\large MR Engine}\\[2pt]
-  {\footnotesize equivalence-law rewriting on the FOL AST}\\[4pt]
-  \begin{tikzpicture}
-    \node[art, text width=41mm] {\textcolor{faded}{\# MR-E1.1 contraposition}\\
-      $\forall$x.(Bird(x) $\to$ Fly(x))\\
-      \textcolor{lgmtc}{\textbf{$\Downarrow$ equivalent}}\\
-      $\forall$x.($\neg$Fly(x) $\to$ $\neg$Bird(x))};
-  \end{tikzpicture}\\[4pt]
-  \begin{tikzpicture}
-    \node[art, inner sep=2.5pt] (c1) {\textbf{E1--E2 $\times$10}};
-    \node[art, inner sep=2.5pt, right=2pt of c1] (c2) {\textbf{S $\times$2}};
-    \node[art, inner sep=2.5pt, right=2pt of c2] (c3) {\textbf{P $\times$5}};
-    \node[art, inner sep=2.5pt, right=2pt of c3] {\textbf{C $\times$3}};
-  \end{tikzpicture}
-};
+% ===================== Stage 2: MR Engine (hero) =====================
+\node[stage, fill=cyellow, draw=cyelb, right=15mm of s1.north east, anchor=north west] (s2) {};
+\node[stagetitle] at ($(s2.north west)+(3.5mm,-3mm)$) {MR Engine};
+\node[stagesub] at ($(s2.north west)+(3.5mm,-8.5mm)$) {equivalence-law rewriting\\ on the FOL AST};
+\node[art] (a2) at ($(s2.north west)+(3.5mm,-15mm)$) {
+  \textcolor{faded}{\# MR-E1.1 contraposition}\\
+  $\forall$x.(Bird(x) $\to$ Fly(x))\\
+  \textcolor{lgmtc}{\textbf{$\Downarrow$ equivalent}}\\
+  $\forall$x.($\neg$Fly(x) $\to$ $\neg$Bird(x))};
+\node[chip] (c1) at ($(s2.south west)+(3.5mm,3.5mm)$) {E1--E2 $\times$10};
+\node[chip, right=2mm of c1] (c2) {S $\times$2};
+\node[chip, right=2mm of c2] (c3) {P $\times$5};
+\node[chip, right=2mm of c3] (c4) {C $\times$3};
 
-\node[stage, fill=cblue, draw=cblub, text width=44mm, right=15mm of s2.north east, anchor=north west] (s3) {
-  {\bfseries\large NL Realizer}\\[2pt]
-  {\footnotesize LLM as strict translator,\\ with fidelity audit}\\[4pt]
-  \begin{tikzpicture}
-    \node[art, text width=41mm] {\textcolor{faded}{\# system prompt (excerpt)}\\
-      \textrm{``Translate the formula to English.\\ Do not simplify, reorder,\\ or reason.''}};
-    \node[art, text width=41mm, below=4pt of current bounding box.south]
-      {\textrm{\textit{``Anything that cannot fly is not a bird.''}}};
-  \end{tikzpicture}
-};
+% ===================== Stage 3: NL Realizer =====================
+\node[stage, fill=cblue, draw=cblub, right=15mm of s2.north east, anchor=north west] (s3) {};
+\node[stagetitle] at ($(s3.north west)+(3.5mm,-3mm)$) {NL Realizer};
+\node[stagesub] at ($(s3.north west)+(3.5mm,-8.5mm)$) {LLM as strict translator,\\ with fidelity audit};
+\node[art] (a3a) at ($(s3.north west)+(3.5mm,-15mm)$) {
+  \textcolor{faded}{\# system prompt (excerpt)}\\
+  \textrm{``Translate the formula to English.}\\
+  \textrm{\textbf{Do not} simplify, reorder, or reason.''}};
+\node[art] (a3b) at ($(s3.north west)+(3.5mm,-30mm)$) {
+  \textrm{\textit{``Anything that cannot fly is not a bird.''}}};
 
-\node[stage, fill=cgreen, draw=cgrnb, text width=44mm, right=15mm of s3.north east, anchor=north west] (s5) {
-  {\bfseries\large Oracle \& Reporter}\\[2pt]
-  {\footnotesize cross-case consistency check}\\[4pt]
-  \begin{tikzpicture}
-    \node[art, text width=41mm] {
-      f($x_s$) \textcolor{mute}{\;source} \hfill \textbf{True}\\
-      f($x_f$) \textcolor{mute}{\;follow-up} \hfill \textbf{False}\\[2pt]
-      \textcolor{mute}{oracle:}\; \textcolor{badred}{\textbf{$\times$ violation}}};
-  \end{tikzpicture}\\[4pt]
-  {\footnotesize MVR 24.7\% \;·\; Acc$_\mathrm{cons}$ 55.7\% \;·\; HDR 14.3\%}
-};
-
-% ===================== flow arrows =====================
-\draw[flow] (s1) -- (s2) node[lbl, midway, above=-1pt] {source\\case $x_s$};
-\draw[flow] (s2) -- (s3) node[lbl, midway, above=-1pt] {follow-up\\$x_f$ (FOL)};
-
-% ===================== external SUT below =====================
-\node[stage, fill=white, draw=bd!160, text width=66mm, below=13mm of $(s3.south)!0.5!(s5.south)$] (s4) {
-  {\bfseries\large Inference Runner}\\[2pt]
-  {\footnotesize any OpenAI-compatible endpoint}\\[3pt]
-  \begin{tikzpicture}
-    \node[art] {f($x_s$) = \{"label": \textcolor{okgreen}{\textbf{"True"}}\}};
-    \node[art, right=3pt of current bounding box.east] {f($x_f$) = \{"label": \textcolor{badred}{\textbf{"False"}}\}};
-  \end{tikzpicture}\\[3pt]
-  {\ttfamily\scriptsize\textcolor{faded}{GPT-5.2 · Claude · DeepSeek · Llama · vLLM · Ollama}}
-};
-\node[font=\sffamily\bfseries\footnotesize, text=faded, anchor=south west]
+% ===================== Stage 4 (SUT): external, right =====================
+\node[stage, fill=white, draw=ink!60, line width=1pt, right=16mm of s3.north east, anchor=north west] (s4) {};
+\node[stagetitle] at ($(s4.north west)+(3.5mm,-3mm)$) {Inference Runner};
+\node[stagesub] at ($(s4.north west)+(3.5mm,-8.5mm)$) {4 prompting strategies;\\ schema-validated JSON output};
+\node[art] (a4a) at ($(s4.north west)+(3.5mm,-15mm)$) {f($x_s$) = \{"label": \textcolor{okgreen}{\textbf{"True"}}\}};
+\node[art] (a4b) at ($(s4.north west)+(3.5mm,-26mm)$) {f($x_f$) = \{"label": \textcolor{badred}{\textbf{"False"}}\}};
+\node[stagesub, font=\ttfamily\tiny, text=faded] at ($(s4.south west)+(3.5mm,6mm)$)
+  {GPT-5.2 · Claude · DeepSeek · Llama · vLLM · Ollama};
+\node[font=\sffamily\bfseries\scriptsize, text=faded, anchor=south west, xshift=1mm, yshift=1mm]
   at (s4.north west) {SUT · external};
 
-\draw[flow] (s3.south) -- node[lbl, right=1pt, pos=0.35] {NL pair} (s3.south |- s4.north);
-\draw[flow] (s4.north -| s5.south) -- node[lbl, right] {verdicts} (s5.south);
+% ===================== Stage 5: Oracle & Reporter (inside box, below s3) =====================
+\node[stage, fill=cgreen, draw=cgrnb, minimum height=34mm, below=17mm of s3.south west, anchor=north west] (s5) {};
+\node[stagetitle] at ($(s5.north west)+(3.5mm,-3mm)$) {Oracle \& Reporter};
+\node[stagesub] at ($(s5.north west)+(3.5mm,-8.5mm)$) {cross-case consistency check};
+\node[art] (a5) at ($(s5.north west)+(3.5mm,-14mm)$) {
+  f($x_s$) \textcolor{mute}{\;source}\hfill \textbf{True}\\
+  f($x_f$) \textcolor{mute}{\;follow-up}\hfill \textbf{False}\\[2pt]
+  \textcolor{mute}{oracle:}\; \textcolor{badred}{$\times$ \textbf{violation}}};
+\node[stagesub, align=flush left] at ($(s5.south west)+(3.5mm,8mm)$)
+  {\footnotesize MVR 24.7\%\\
+   \footnotesize Acc$_\textrm{cons}$ 55.7\% \;·\; HDR 14.3\%};
+
+% ===================== flow arrows =====================
+\draw[flow] (s1.east) -- (s2.west) node[lbl, midway, above=1pt] {source case $x_s$};
+\draw[flow] (s2.east) -- (s3.west) node[lbl, midway, above=1pt] {FOL pair};
+\draw[flow] (s3.east) -- (s4.west) node[lbl, midway, above=1pt] {NL pair $\langle x_s,x_f\rangle$};
+\draw[flow] (s4.south) |- node[lbl, pos=0.85, above=1pt] {verdicts} (s5.east);
 
 % ===================== dashed LGMT container =====================
 \node[draw=lgmtc!70, dashed, line width=1pt, rounded corners=8pt,
-      fit=(s1)(s2)(s3)(s5), inner sep=12pt] (box) {};
+      fit=(s1)(s2)(s3)(s5), inner sep=10pt] (box) {};
 \node[font=\sffamily\bfseries\Large, text=lgmtc, fill=white, inner sep=4pt,
       anchor=south west] at (box.north west) {LGMT};
 
