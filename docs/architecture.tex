@@ -1,0 +1,116 @@
+% LGMT architecture figure (TikZ, standalone).
+% Build PDF:  pdflatex fig-architecture.tex
+% Build PNG:  pdftoppm -png -r 200 fig-architecture.pdf architecture
+\documentclass[border=8pt]{standalone}
+\usepackage{tikz}
+\usetikzlibrary{positioning,fit,arrows.meta,calc}
+\usepackage[T1]{fontenc}
+\usepackage{helvet}\renewcommand{\familydefault}{\sfdefault}
+
+\definecolor{ink}{HTML}{17273F}
+\definecolor{mute}{HTML}{4A5A70}
+\definecolor{faded}{HTML}{8A97A8}
+\definecolor{bd}{HTML}{B9C6D8}
+\definecolor{cgray}{HTML}{F2F2F2}
+\definecolor{cyellow}{HTML}{FFF6D6}
+\definecolor{cblue}{HTML}{E4EEFB}
+\definecolor{cgreen}{HTML}{E7F4E4}
+\definecolor{cyelb}{HTML}{D9B84A}
+\definecolor{cblub}{HTML}{7FA3D4}
+\definecolor{cgrnb}{HTML}{7FB069}
+\definecolor{lgmtc}{HTML}{33507A}
+\definecolor{badred}{HTML}{B3402F}
+\definecolor{okgreen}{HTML}{2F7D4F}
+
+\begin{document}
+\begin{tikzpicture}[
+  font=\sffamily,
+  stage/.style={draw, rounded corners=4pt, line width=0.8pt, align=left,
+                inner sep=7pt, text=ink},
+  art/.style={draw=bd, fill=white, rounded corners=3pt, line width=0.6pt,
+              font=\ttfamily\scriptsize, align=left, inner sep=5pt, text=ink},
+  lbl/.style={font=\ttfamily\tiny, text=mute, align=center},
+  flow/.style={-{Triangle[length=6pt,width=6pt]}, line width=1pt, draw=ink!80},
+]
+
+% ===================== pipeline stages (inside LGMT box) =====================
+\node[stage, fill=cgray, draw=bd!160, text width=44mm] (s1) {
+  {\bfseries\large Case Loader}\\[2pt]
+  {\footnotesize NL+FOL dual schema\\ FOLIO / LogicNLI / ProverQA / custom}\\[4pt]
+  \begin{tikzpicture}
+    \node[art, text width=41mm] {\textcolor{faded}{\# premise--conclusion pair}\\
+      \textbf{premises\_logic:} ["$\forall$x.(Bird(x) $\to$ Fly(x))",\\
+      \hspace*{6pt}"Bird(tweety)"]\\
+      \textbf{conclusion\_logic:} "Fly(tweety)"\\
+      \textbf{premises\_text:} ["All birds can fly.", \ldots]};
+  \end{tikzpicture}
+};
+
+\node[stage, fill=cyellow, draw=cyelb, text width=44mm, right=15mm of s1.north east, anchor=north west] (s2) {
+  {\bfseries\large MR Engine}\\[2pt]
+  {\footnotesize equivalence-law rewriting on the FOL AST}\\[4pt]
+  \begin{tikzpicture}
+    \node[art, text width=41mm] {\textcolor{faded}{\# MR-E1.1 contraposition}\\
+      $\forall$x.(Bird(x) $\to$ Fly(x))\\
+      \textcolor{lgmtc}{\textbf{$\Downarrow$ equivalent}}\\
+      $\forall$x.($\neg$Fly(x) $\to$ $\neg$Bird(x))};
+  \end{tikzpicture}\\[4pt]
+  \begin{tikzpicture}
+    \node[art, inner sep=2.5pt] (c1) {\textbf{E1--E2 $\times$10}};
+    \node[art, inner sep=2.5pt, right=2pt of c1] (c2) {\textbf{S $\times$2}};
+    \node[art, inner sep=2.5pt, right=2pt of c2] (c3) {\textbf{P $\times$5}};
+    \node[art, inner sep=2.5pt, right=2pt of c3] {\textbf{C $\times$3}};
+  \end{tikzpicture}
+};
+
+\node[stage, fill=cblue, draw=cblub, text width=44mm, right=15mm of s2.north east, anchor=north west] (s3) {
+  {\bfseries\large NL Realizer}\\[2pt]
+  {\footnotesize LLM as strict translator,\\ with fidelity audit}\\[4pt]
+  \begin{tikzpicture}
+    \node[art, text width=41mm] {\textcolor{faded}{\# system prompt (excerpt)}\\
+      \textrm{``Translate the formula to English.\\ Do not simplify, reorder,\\ or reason.''}};
+    \node[art, text width=41mm, below=4pt of current bounding box.south]
+      {\textrm{\textit{``Anything that cannot fly is not a bird.''}}};
+  \end{tikzpicture}
+};
+
+\node[stage, fill=cgreen, draw=cgrnb, text width=44mm, right=15mm of s3.north east, anchor=north west] (s5) {
+  {\bfseries\large Oracle \& Reporter}\\[2pt]
+  {\footnotesize cross-case consistency check}\\[4pt]
+  \begin{tikzpicture}
+    \node[art, text width=41mm] {
+      f($x_s$) \textcolor{mute}{\;source} \hfill \textbf{True}\\
+      f($x_f$) \textcolor{mute}{\;follow-up} \hfill \textbf{False}\\[2pt]
+      \textcolor{mute}{oracle:}\; \textcolor{badred}{\textbf{$\times$ violation}}};
+  \end{tikzpicture}\\[4pt]
+  {\footnotesize MVR 24.7\% \;·\; Acc$_\mathrm{cons}$ 55.7\% \;·\; HDR 14.3\%}
+};
+
+% ===================== flow arrows =====================
+\draw[flow] (s1) -- (s2) node[lbl, midway, above=-1pt] {source\\case $x_s$};
+\draw[flow] (s2) -- (s3) node[lbl, midway, above=-1pt] {follow-up\\$x_f$ (FOL)};
+
+% ===================== external SUT below =====================
+\node[stage, fill=white, draw=bd!160, text width=66mm, below=13mm of $(s3.south)!0.5!(s5.south)$] (s4) {
+  {\bfseries\large Inference Runner}\\[2pt]
+  {\footnotesize any OpenAI-compatible endpoint}\\[3pt]
+  \begin{tikzpicture}
+    \node[art] {f($x_s$) = \{"label": \textcolor{okgreen}{\textbf{"True"}}\}};
+    \node[art, right=3pt of current bounding box.east] {f($x_f$) = \{"label": \textcolor{badred}{\textbf{"False"}}\}};
+  \end{tikzpicture}\\[3pt]
+  {\ttfamily\scriptsize\textcolor{faded}{GPT-5.2 · Claude · DeepSeek · Llama · vLLM · Ollama}}
+};
+\node[font=\sffamily\bfseries\footnotesize, text=faded, anchor=south west]
+  at (s4.north west) {SUT · external};
+
+\draw[flow] (s3.south) -- node[lbl, right=1pt, pos=0.35] {NL pair} (s3.south |- s4.north);
+\draw[flow] (s4.north -| s5.south) -- node[lbl, right] {verdicts} (s5.south);
+
+% ===================== dashed LGMT container =====================
+\node[draw=lgmtc!70, dashed, line width=1pt, rounded corners=8pt,
+      fit=(s1)(s2)(s3)(s5), inner sep=12pt] (box) {};
+\node[font=\sffamily\bfseries\Large, text=lgmtc, fill=white, inner sep=4pt,
+      anchor=south west] at (box.north west) {LGMT};
+
+\end{tikzpicture}
+\end{document}
