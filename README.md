@@ -171,18 +171,51 @@ symbolically checks source/follow-up equivalence with Z3.
 
 ```
 lgmt/               the Python package (core / mrs / prompts / models / utils)
-experiments/        scripts that compute the paper's RQ1–RQ4 tables/figures
 data/               source test cases and the processed MG evaluation set
 docs/               assets (architecture figure)
-tools/              MR regression smoke checker
+tools/              MR regression checker — `python tools/mr_smoke_compare.py`
+                    (compares all 20 MR transforms against a saved baseline;
+                    `--save-baseline` records a new one). The full RQ1–RQ4
+                    experiment scripts live in the companion paper's
+                    research repository, not here.
 tests/              pytest suite (MR equivalence, labels, mock, CLI)
 ```
 
 ## Citation
 
-The framework and the 20 MRs are described in the companion KBS paper
-(**TODO: full citation placeholder**). If you use LGMT, please also cite the
-ICSE 2027 Tool Demonstration paper (**TODO: citation placeholder**).
+The framework and the 20 metamorphic relations are described in the
+companion KBS paper:
+
+> Zenghui Zhou et al. "LGMT: Logic-Grounded Metamorphic Testing for
+> Evaluating the Reasoning Reliability of LLMs." *Knowledge-Based
+> Systems*, 2026 (in press).
+
+If you use this tool, please also cite the tool demonstration paper:
+
+> Zenghui Zhou et al. "LGMT: A Tool for Testing the Logical Reasoning
+> Reliability of LLMs via Logic-Grounded Metamorphic Relations." *ICSE
+> 2027 — Tool Demonstration Track*, under review.
+
+```bibtex
+@article{zhou2026lgmt,
+  title   = {LGMT: Logic-Grounded Metamorphic Testing for Evaluating the
+             Reasoning Reliability of {LLMs}},
+  author  = {Zhou, Zenghui and others},
+  journal = {Knowledge-Based Systems},
+  year    = {2026},
+  note    = {in press},
+}
+
+@inproceedings{zhou2027lgmt-tool,
+  title     = {LGMT: A Tool for Testing the Logical Reasoning Reliability
+               of {LLMs} via Logic-Grounded Metamorphic Relations},
+  author    = {Zhou, Zenghui and others},
+  booktitle = {Proceedings of the 49th International Conference on
+               Software Engineering (ICSE) -- Tool Demonstration Track},
+  year      = {2027},
+  note      = {under review},
+}
+```
 
 ## License
 

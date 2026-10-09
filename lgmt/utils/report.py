@@ -662,30 +662,14 @@ def _html_page(title: str, body: str) -> str:
 {body}
     </div>
     <footer>
-        LGMT · <a href="#">GitHub (TODO)</a> · <a href="#">Paper (TODO)</a> ·
+        LGMT · <a href="https://github.com/MaxwelsDonc/lgmt-tool">GitHub</a> ·
+        Companion study: Knowledge-Based Systems (2026), in press ·
         Reference metrics: {html.escape(REFERENCE_SNAPSHOT)} ·
         generated {datetime.now().strftime("%Y-%m-%d %H:%M")}
     </footer>
     <script>{_JS}</script>
 </body>
 </html>"""
-
-
-def generate_transformation_report(
-    results: List[Tuple[TestCase, TestCase, str]],
-    output_file: str = "mr_report.html",
-) -> str:
-    """Report raw MR transformations: list of (source, followup, mr_name)."""
-    body = ""
-    for idx, (source, followup, mr_name) in enumerate(results):
-        body += f'<div class="card"><h2 style="margin-top:0">Example #{idx + 1} ({html.escape(mr_name)})</h2>\n'
-        body += _render_comparison_table(source, followup)
-        body += "</div>"
-    page = _html_page("Metamorphic Relation Check Report", body)
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write(page)
-    print(f"HTML report generated: {os.path.abspath(output_file)}")
-    return output_file
 
 
 # --------------------------------------------------------------------- #

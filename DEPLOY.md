@@ -27,9 +27,9 @@ The web demo targets a **Gradio SDK** Space.
 2. Upload the contents of `spaces/` as the Space repository:
    - `app.py` — thin wrapper calling `lgmt.webapp.build_app()`
    - `requirements.txt` — installs `gradio` plus LGMT itself
-3. In the Space's `requirements.txt`, install LGMT from the public repo,
-   e.g. `git+https://github.com/<org>/lgmt.git` (TODO: replace placeholder
-   once published). Until then you can upload the whole LGMT repository to
+3. In the Space's `requirements.txt`, install LGMT from the public repo:
+   `git+https://github.com/MaxwelsDonc/lgmt-tool.git` (already filled in).
+   Until the repo is public, you can upload the whole LGMT repository to
    the Space and use `-e .` from the uploaded copy.
 4. No secrets are needed: the Space runs the offline demo out of the box.
    The "Test Your Model" tab asks visitors for their own API key, which is

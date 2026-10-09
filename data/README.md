@@ -19,8 +19,8 @@ welcome.)
 
 - **FOLIO** is released under **CC BY-SA 4.0**. The FOLIO-derived content
   in this directory (source cases and metamorphic groups) is shared under
-  the same license, with attribution to the FOLIO authors. See
-  `zenodo/LICENSE.folio.txt` in the Zenodo package for the full notice.
+  the same license, with attribution to the FOLIO authors (see the
+  citation table above).
 - **LogicNLI** and **ProverQA**: their upstream repositories **do not ship
   a LICENSE**. The derived content in this repository (source cases and
   metamorphic groups) is included **for academic research purposes only**;
@@ -28,8 +28,7 @@ welcome.)
   are a rights holder and have concerns about the derived content here,
   please contact us and we will remove it promptly.
 - Inference results, back-translation annotations, and audit labels
-  elsewhere in the repository and in the Zenodo package are artifacts
-  produced by the LGMT authors and are released under the repository's MIT
+  produced by the LGMT authors are released under the repository's MIT
   license.
 
 ## Files
@@ -72,7 +71,3 @@ Each line is one metamorphic group:
   / logicnli 93.
 - Demo set: **40 groups** (all folio-derived, covering the E/S/P/C MR
   categories), bundled in `lgmt/demo/demo_mgs.jsonl`.
-- The full 76,298-group candidate pool (all sources) and the per-model
-  inference results are published separately on Zenodo; see `zenodo/` in
-  the repository root for the packaging scripts and the data-package
-  README (DOI placeholder TODO).
