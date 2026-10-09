@@ -8,6 +8,8 @@ variables (see :mod:`lgmt.config`).
 import time
 from typing import Any, Dict, Optional
 
+from loguru import logger
+
 import httpx
 from openai import OpenAI
 
@@ -31,13 +33,15 @@ class OpenAICompatClient(LLMClient):
     ):
         if not api_key:
             raise ValueError(
-                "Missing API key. Set it in the config file, pass --api-key, "
-                "or export LGMT_API_KEY."
+                "Missing API key. Set the LGMT_API_KEY environment variable, "
+                "or provide 'model.api_key' in the config file "
+                "(copy config.example.yaml)."
             )
         if not base_url:
             raise ValueError(
-                "Missing base URL. Set it in the config file, pass --base-url, "
-                "or export LGMT_BASE_URL."
+                "Missing base URL. Set the LGMT_BASE_URL environment variable, "
+                "or provide 'model.base_url' in the config file "
+                "(copy config.example.yaml)."
             )
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -53,7 +57,7 @@ class OpenAICompatClient(LLMClient):
         self.client = OpenAI(
             api_key=self.api_key, base_url=self.base_url, http_client=custom_http_client
         )
-        print(f"[OpenAICompat] Client initialized. Endpoint: {self.base_url}")
+        logger.info(f"OpenAICompat client initialized. Endpoint: {self.base_url}")
 
     @staticmethod
     def is_reasoning_model(model_name: str) -> bool:
@@ -120,7 +124,7 @@ class OpenAICompatClient(LLMClient):
                 return (full_content, response) if return_raw else full_content
 
             except Exception as e:
-                print(f"[Error] Model: {model} | Attempt {attempt + 1}: {e}")
+                logger.warning(f"Model: {model} | attempt {attempt + 1}: {e}")
                 if attempt < max_retries:
                     time.sleep(2 ** attempt)
                 else:

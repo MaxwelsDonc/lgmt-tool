@@ -6,9 +6,9 @@ from functools import reduce
 import sys
 import os
 
-# 路径适配
+# path adaptation
 
-# 1. NLTK 核心组件导入
+# 1. NLTK core imports
 from nltk.sem.logic import (
     Expression, 
     BinaryExpression, 
@@ -23,16 +23,16 @@ from nltk.sem.logic import (
     EqualityExpression
 )
 
-# 2. 自定义基类导入
+# 2. custom base classes
 from lgmt.mrs.equivalence.equivalence_utils import MetamorphicTransform, LogicTransformer, LogicChecker
 
 from lgmt.core.structure import TestCase
 
 # =============================================================================
-# 辅助函数：全局扫描用 (用于生成不冲突的新名字)
+# helper: global scan (used to generate fresh names)
 # =============================================================================
 def get_vars_final(e) -> list:
-    """提取所有变量和常量，用于初始化全局保留名单"""
+    """Collect all variables and constants for the reserved-name set."""
     if isinstance(e, (QuantifiedExpression, LambdaExpression)):
         return [(e.variable, 'Binder')] + get_vars_final(e.term)
     elif isinstance(e, FunctionVariableExpression):
@@ -42,11 +42,11 @@ def get_vars_final(e) -> list:
     elif isinstance(e, ConstantExpression):
         return [(e.variable, 'Argument')]
     else:
-        # 对于 Application 和 Binary 等，递归收集
+        # recurse for Application/Binary nodes
         return e.visit(get_vars_final, lambda parts: reduce(operator.add, parts, []))
 
 # =============================================================================
-# 主类实现
+# main class
 # =============================================================================
 class MRE15(MetamorphicTransform):
     def __init__(self):
@@ -60,16 +60,16 @@ class MRE15(MetamorphicTransform):
     class _Transformer(LogicTransformer):
         """
         [Scope-aware Transformer]
-        策略：
-        1. 收集整个表达式的自由变量 (Free Variables)，这些名字是绝对不能被 Binder 重用的。
-        2. 维护一个 forbidden_names 集合，初始包含所有自由变量。
-        3. 遍历时，每遇到一个量词 (Binder x)：
-           - 如果 x 在 forbidden_names 中：
-             - 生成新名字 z (保证不冲突)。
+        Strategy:
+        1. Collect the free variables of the whole expression; binders must never reuse them.
+        2. Keep a forbidden_names set initialized with all free variables.
+        3. For every binder x encountered:
+           - if x is in forbidden_names:
+             - alpha-convert x to a fresh name z.
              - Alpha-convert x -> z。
-             - 将 z 加入 forbidden_names。
-           - 否则：
-             - 将 x 加入 forbidden_names (防止后续量词重用造成 shadowing 或 conflict)。
+             - add z to forbidden_names.
+           - otherwise:
+             - add x to forbidden_names (prevents shadowing/conflicts later).
         """
         def __init__(self, original_expr: Expression = None):
             self.index = 1
@@ -80,59 +80,59 @@ class MRE15(MetamorphicTransform):
                 self._scan_reserved(original_expr)
 
         def _scan_reserved(self, expr):
-            """预扫描：记录公式原有的所有名字，防止生成的新名字 z1 撞车"""
+            """Pre-scan: record all original names so fresh names never clash."""
             all_vars = get_vars_final(expr)
             self._global_reserved.update({var.name for var, role in all_vars})
 
         def _get_new_var(self) -> Variable:
-            """生成全局唯一变量名 (bv1, bv2...)"""
+            """Generate a globally fresh variable name (bv1, bv2...)."""
             while True:
                 name = f'bv{self.index}'
-                # 新名字既不能是全局原本就有的，也不能是当前 forbidden 的
+                # fresh means: not originally present and not forbidden
                 if name not in self._global_reserved and name not in self.forbidden_names:
                     self._global_reserved.add(name)
                     return Variable(name)
                 self.index += 1
 
         def transform(self, expr: Expression) -> Expression:
-            """入口方法"""
-            # 1. 如果没初始化过全局名单，先扫描
+            """Entry point."""
+            # 1. build the reserved-name set on first use
             if not self._global_reserved:
                 self._scan_reserved(expr)
             
-            # 2. 初始化 forbidden_names 为所有自由变量
-            # free() 方法返回 set of Variables
+            # 2. forbid all free variables
+            # free() returns a set of Variables
             self.forbidden_names = {v.name for v in expr.free()}
             
-            # 3. 启动遍历
+            # 3. walk the tree
             return self.visit(expr)
 
         def visit(self, expr):
             """
-            核心分发器 (Dispatcher)
+            Core dispatcher.
             """
             method_name = f"visit_{expr.__class__.__name__}"
             if hasattr(self, method_name):
                 return getattr(self, method_name)(expr)
             
-            # 通用回退逻辑
+            # generic fallback
             return expr.visit(self.visit, lambda parts: expr.__class__(*parts))
 
         def visit_QuantifiedExpression(self, expr):
             var_name = expr.variable.name
             
-            # 检查冲突：如果变量名已被禁止 (是自由变量，或已被前序量词使用)
+            # conflict if the name is forbidden (free or taken by an earlier binder)
             if var_name in self.forbidden_names:
                 new_var = self._get_new_var()
                 # Alpha-convert
                 expr = expr.alpha_convert(new_var)
-                # 记录新名字已被使用
+                # mark the fresh name as used
                 self.forbidden_names.add(new_var.name)
             else:
-                # 记录该名字已被使用
+                # mark the name as used
                 self.forbidden_names.add(var_name)
             
-            # 递归处理 term
+            # recurse into the body
             new_term = self.visit(expr.term)
             
             return expr.__class__(expr.variable, new_term)
@@ -145,7 +145,7 @@ class MRE15(MetamorphicTransform):
 
 
         def visit_LambdaExpression(self, expr):
-            # Lambda 处理逻辑同量词
+            # lambdas are handled like quantifiers
             return self.visit_QuantifiedExpression(expr)
 
         def visit_IndividualVariableExpression(self, expr):
@@ -161,11 +161,11 @@ class MRE15(MetamorphicTransform):
             return expr
 
 
-        # 为具体的 Binary 类型提供支持 (虽然上面的 fallback 应该能处理)
-        # 只要 AndExpression(left, right) 构造函数存在即可
+        # support for concrete Binary types (the fallback above also covers them)
+        # only requires the Binary constructors to exist
 
     class _LogicChecker(LogicChecker):
-        """逻辑检查器：沿用之前的逻辑"""
+        """Applicability checker (same logic as before)."""
         def check(self, expr: Expression) -> bool:
             ordered_vars = get_vars_final(expr)
             seen = set()
@@ -182,7 +182,7 @@ class MRE15(MetamorphicTransform):
         return ["all y.G(x,y) & all x.F(x)"]
 
 # =============================================================================
-# 测试代码
+# test driver
 # =============================================================================
 if __name__ == "__main__":
     mr = MRE15()

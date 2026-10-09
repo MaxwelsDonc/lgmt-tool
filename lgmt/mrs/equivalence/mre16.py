@@ -25,11 +25,11 @@ class MRE16(MetamorphicTransform):
             logic_checker=self._LogicChecker()
         )
 
-    # 内部类：专属 Transformer
+    # inner class: dedicated transformer
     class _Transformer(LogicTransformer):
         """
-        [Inner Class] 专门为 MR-E1.6 服务的 AST 重写器。
-        继承自 utils.logic_visitor.LogicTransformer，复用其遍历能力。
+        [Inner class] AST rewriter dedicated to MR-E1.6.
+        Inherits the traversal from LogicTransformer.
         """
         def transform(self, expr: Expression) -> Expression:
             if isinstance(expr, AllExistsExpressionTuple):
@@ -53,11 +53,11 @@ class MRE16(MetamorphicTransform):
             else:
                 return self.recursive(expr)
         
-    # 内部类：专属 Checker
+    # inner class: dedicated checker
     class _LogicChecker(LogicChecker):
         """
-        [Inner Class] 专门为 MR-E1.6 服务的 AST 重写器。
-        继承自 equivalence_utils.LogicChecker，复用其遍历能力。
+        [Inner class] AST rewriter dedicated to MR-E1.6.
+        Inherits the traversal from LogicChecker.
         """
         def check(self, expr: Expression) -> bool:
             if isinstance(expr, AllExistsExpressionTuple):
@@ -69,15 +69,15 @@ class MRE16(MetamorphicTransform):
                 return self.recursive(expr)
 
     # =========================================================================
-    # MR 标准接口实现
+    # standard MR interface implementation
     # =========================================================================
     def source_templates(self) -> list[str]:
         return [ "all x.(exists w.(exists y. all d. all c. all b. exist z. exist r. D(z,y,x)))"]
 
 
 if __name__ == "__main__":
-    # 实例化你要测的 MR
+    # instantiate the MR to test
     mr = MRE16()
     
-    # 运行检查
+    # run the check
     mr.sanity_check()

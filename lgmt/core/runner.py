@@ -1,8 +1,6 @@
 """Inference runner: LLM-based entailment judgment over metamorphic groups.
 
-Adaptive concurrency + thread-safe I/O + JSON schema validation. This is a
-library-ified port of the original ``core/infer_run.py``; the parsing and
-validation logic is unchanged.
+Adaptive concurrency + thread-safe I/O + JSON schema validation.
 """
 
 import json
@@ -70,6 +68,7 @@ def call_llm(
     user_prompt: str,
     cot: bool,
     context: Optional[dict] = None,
+    temperature: float = 0.0,
     retries: int = 3,
     delay: int = 2,
 ) -> dict:
@@ -85,6 +84,7 @@ def call_llm(
                 max_retries=0,
                 context=context,
                 cot=cot,
+                temperature=temperature,
             )
             if llm_response:
                 # clean Markdown code block
@@ -98,12 +98,10 @@ def call_llm(
                 cleaned_response = repair_json(cleaned_response)
                 obj = json.loads(cleaned_response)
 
-                # ==========================================
-                # 新增的拦截与容错逻辑：应对模型外层包裹了 List 的情况
-                # ==========================================
+                # tolerate models wrapping the verdict in an outer list:
                 if isinstance(obj, list):
                     extracted_dict = None
-                    for item in reversed(obj):  # 倒序遍历，通常模型把答案放最后
+                    for item in reversed(obj):
                         if isinstance(item, dict):
                             extracted_dict = item
                             break
@@ -111,19 +109,16 @@ def call_llm(
                     if extracted_dict is not None:
                         obj = extracted_dict
                     else:
-                        # 如果列表里一个字典都没有，主动抛出异常触发重试
+                        # no dict in the list: raise to trigger a retry
                         raise ValueError(
                             f"Parsed JSON is a list without a valid dict object: {obj}"
                         )
-                # ==========================================
 
                 # Validation logic
                 if not cot:
                     jsonschema.validate(instance=obj, schema=RESULT_SCHEMA_DIRECT)
-                elif cot:  # 这里的 elif 也可以直接写成 else: if cot is a boolean
-                    jsonschema.validate(instance=obj, schema=RESULT_SCHEMA_COT)
                 else:
-                    raise ValueError("Invalid system prompt type")
+                    jsonschema.validate(instance=obj, schema=RESULT_SCHEMA_COT)
 
                 return obj
             else:
@@ -151,6 +146,7 @@ def process_group(
     result_save_path: str,
     cot: bool,
     prompting: str = "",
+    temperature: float = 0.0,
 ) -> bool:
     """Process single metamorphic group and save result."""
     mg_id = mg.metadata.get("mg_id", "unknown")
@@ -176,6 +172,7 @@ def process_group(
             build_user_prompt(source_test_case),
             cot,
             context={**base_context, "role": "source"},
+            temperature=temperature,
         )
         followup_response = call_llm(
             client,
@@ -184,18 +181,19 @@ def process_group(
             build_user_prompt(followup_test_cases),
             cot,
             context={**base_context, "role": "followup"},
+            temperature=temperature,
         )
 
-        # 2. Extract and Format Labels
+        # 2. Extract and format labels
         source_pred_label = canonical_label(source_response.get("label", ""))
         followup_pred_label = canonical_label(followup_response.get("label", ""))
 
-        # 3. Calculate Metrics
+        # 3. Calculate metrics
         source_is_correct = source_pred_label == ground_truth_label
         followup_is_correct = followup_pred_label == ground_truth_label
         is_consistent = source_pred_label == followup_pred_label
 
-        # 4. Construct Result (Original Version Restored)
+        # 4. Construct the result record
         result = {
             "mg_id": mg_id,
             "mr_name": getattr(mg, "mr_name", ""),
@@ -243,8 +241,13 @@ def run_inference(
     result_save_path: str = "infer_results/results.jsonl",
     max_workers: int = 100,
     quiet: bool = False,
+    temperature: float = 0.0,
 ) -> str:
-    """Run entailment inference over all MGs and write per-MG JSONL."""
+    """Run entailment inference over all MGs and write per-MG JSONL.
+
+    ``temperature`` is forwarded to the client; reasoning models that
+    reject sampling parameters ignore it client-side.
+    """
     if prompting not in PROMPTING_PRESETS:
         raise ValueError(
             f"Unknown prompting {prompting!r}; choose from {sorted(PROMPTING_PRESETS)}"
@@ -278,6 +281,7 @@ def run_inference(
                 result_save_path,
                 cot,
                 prompting,
+                temperature,
             ): mg
             for mg in mgs
         }

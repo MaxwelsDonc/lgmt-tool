@@ -33,15 +33,15 @@ class MRE22(MetamorphicTransform):
             self.check_result = None
             self.util_transformer = MRE22.UtilClass._Transformer()
 
-        # 内部类：专属 Transformer
+        # inner class: dedicated transformer
         class _Transformer(LogicTransformer):
             """
-            [Inner Class] 专门为 MR-E2.2 服务的 AST 重写器。
-            继承自 metamorphic_relations.mr_equivalence.equivalence_utils.LogicTransformer，复用其遍历能力。
+            [Inner class] AST rewriter dedicated to MR-E2.2.
+            Inherits the traversal from LogicTransformer.
             """
             def transform(self, expr: Expression) -> Expression:
                 """
-                规则: 递归提取且或，匹配是否有非表达式
+                Rule: recursively flatten & / | and look for negated sub-expressions.
                 """
                 if isinstance(expr, (AndExpression, OrExpression)):
                     elements = []
@@ -94,15 +94,15 @@ class MRE22(MetamorphicTransform):
                 return self.transform_result
 
     # =========================================================================
-    # MR 标准接口实现
+    # standard MR interface implementation
     # =========================================================================
     def source_templates(self) -> list[str]:
         return [ "a & -a", "-a | a", "a & b & c & -a", "a & b | -a"]
 
 
 if __name__ == "__main__":
-    # 实例化你要测的 MR
+    # instantiate the MR to test
     mr = MRE22()
     
-    # 运行检查
+    # run the check
     mr.sanity_check()

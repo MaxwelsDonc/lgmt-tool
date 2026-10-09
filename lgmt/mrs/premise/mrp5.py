@@ -20,13 +20,13 @@ class MRP5(MetamorphicRelation):
         self.name = "Premise Decomposition"
 
     # =========================================================================
-    # MR 标准接口实现
+    # standard MR interface implementation
     # =========================================================================
     def check_applicability_logic(self, fol: str) -> bool:
         """
-        判断这数据能不能用这个 MR。
-        只要顶层或递归拆解后是 A & B 结构（且不在量词内部），就可以拆分。
-        但在 check 阶段，我们简单检查是否包含 '&' 即可，实际能否拆分由 transform 决定。
+        Check whether this MR applies to the data.
+        Splittable when a top-level (outside quantifiers) A & B structure exists.
+        The check only looks for '&'; the transform decides actual splittability.
         """
         return "&" in fol
 
@@ -35,19 +35,19 @@ class MRP5(MetamorphicRelation):
 
     def check_applicability(self, test_case: TestCase) -> bool:
         """
-        判断这数据能不能用这个 MR。
-        只要顶层或递归拆解后是 A & B 结构（且不在量词内部），就可以拆分。
-        但在 check 阶段，我们简单检查是否包含 '&' 即可，实际能否拆分由 transform 决定。
+        Check whether this MR applies to the data.
+        Splittable when a top-level (outside quantifiers) A & B structure exists.
+        The check only looks for '&'; the transform decides actual splittability.
         """
         premises_logic : List[str] = test_case.premises_logic
         return any(self.check_applicability_logic(s) for s in premises_logic)    
     
     def transform(self, source_TC: TestCase) -> TestCase:
         """
-        拆分前提：
-        如果前提是 A & B 形式（顶层），则拆分为 A 和 B 两个前提。
-        递归执行：A & B & C -> A, B, C
-        注意：不处理量词内部的 &。例如 all x.(A(x) & B(x)) 不拆分。
+        Split premises:
+        A top-level A & B premise splits into the A and B premises.
+        Recursion: A & B & C -> A, B, C.
+        Note: & inside quantifiers is not split (e.g. all x.(A(x) & B(x))).
         """
         follow_TC = copy.deepcopy(source_TC)
         new_premises_logic = []
@@ -57,39 +57,39 @@ class MRP5(MetamorphicRelation):
 
         def split_expression(expression) -> List[str]:
             """
-            递归拆分 AndExpression
+            Recursively split AndExpressions
             """
             if isinstance(expression, AndExpression):
-                # 递归拆分左边和右边
+                # recurse into both sides
                 return split_expression(expression.first) + split_expression(expression.second)
             else:
-                # 基础情况，返回当前表达式的字符串形式
+                # base case: keep the expression as-is
                 return [str(expression)]
 
-        # 遍历每个前提进行处理
-        # 使用 enumerate 获取 index
+        # process every premise
+        # enumerate for the source index
         for index, (p_logic, p_text) in enumerate(zip(source_TC.premises_logic, source_TC.premises_text)):
             try:
-                # 尝试解析
+                # try to parse
                 expr = parser.parse(p_logic)
                 
-                # 检查是否是顶层的 AndExpression
+                # split only top-level AndExpressions
                 if isinstance(expr, AndExpression):
-                    # 可以拆分
+                    # splittable
                     split_parts = split_expression(expr)
                     
-                    # 将拆分后的部分添加到新列表
+                    # append the split parts
                     for part in split_parts:
                         new_premises_logic.append(part)
-                        # 显式标记 Changed_{index}，对应 Source TC 的第 index 个前提（0-based）
+                        # tag with Changed_{index}, the 0-based source premise index
                         new_premises_text.append(f"[Changed_{index}] {p_text}") 
                 else:
-                    # 不能拆分 (包括 all x.(A&B) 这种情况，因为顶层是 AllExpression 不是 AndExpression)
+                    # not splittable (e.g. all x.(A&B): top node is AllExpression)
                     new_premises_logic.append(p_logic)
                     new_premises_text.append(p_text)
                     
             except Exception as e:
-                # 解析失败，原样保留
+                # unparseable premises pass through unchanged
                 # print(f"Error parsing logic: {p_logic}, error: {e}")
                 new_premises_logic.append(p_logic)
                 new_premises_text.append(p_text)

@@ -1,6 +1,6 @@
 """
 MR-C2: Disjunction with Falsehood 
-规则: (Γ, q) => (Γ, q v 0)
+Rule: (Γ, q) => (Γ, q v 0)
 """
 import copy
 import sys
@@ -27,7 +27,7 @@ class MRC2(MetamorphicRelation):
 
     def transform(self, source_TC: TestCase) -> TestCase:
         """
-        执行变换：
+        Transform:
         Logic: q -> q | 0
         Text:  text -> [Changed_Conclusion] (text) or it is false
         """
@@ -42,13 +42,13 @@ class MRC2(MetamorphicRelation):
             ascii_formula = _normalize(source_TC.conclusion_logic)
             ast = parser.parse(ascii_formula)
             
-            #创建 '0' 的表达式节点
+            # build the constant '0' expression node
             false_expr = parser.parse("0")
             # (Original) | 0
             new_ast = OrExpression(ast, false_expr)
             new_conclusion_logic = str(new_ast)
             
-            #更新文本
+            # update the text
             new_conclusion_text = f"[Changed_conclusion] ({source_TC.conclusion_text}) or it is false"
 
             follow_TC.conclusion_logic = new_conclusion_logic
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     from colorama import Fore, Style
 
     print("=" * 80)
-    print("测试 MRC2 (Disjunction with Falsehood)")
+    print("Testing MRC2 (Disjunction with Falsehood)")
     print("=" * 80)
 
     mock_case = TestCase(
@@ -75,24 +75,24 @@ if __name__ == "__main__":
         conclusion_logic="all y. Likes(y, pizza)" 
     )
     
-    print("\n[原始测试用例 (Original)]")
-    print("  前提 (Premises):")
+    print("\n[Original test case]")
+    print("  Premises:")
     for i, p in enumerate(mock_case.premises_logic, 1):
         print(f"    {i}. {p}")
-    print(f"  结论 (Conclusion Logic): {mock_case.conclusion_logic}")
-    print(f"  结论文本 (Conclusion Text): {mock_case.conclusion_text}")
+    print(f"  Conclusion logic: {mock_case.conclusion_logic}")
+    print(f"  Conclusion text: {mock_case.conclusion_text}")
 
-    # 实例化
+    # instantiate the MR
     mr = MRC2()
-    print(f"\n是否适用: {mr.check_applicability(mock_case)}")
+    print(f"\nApplicable: {mr.check_applicability(mock_case)}")
     new_case = mr.transform(mock_case)
     
-    print("\n[MRC2 变换后结果]")
-    print("  前提 (Premises):")
+    print("\n[MRC2 transformed]")
+    print("  Premises:")
     for i, p in enumerate(new_case.premises_logic, 1):
         print(f"    {i}. {p}")
 
-    print(f"  结论 (Logic): {Fore.GREEN}{new_case.conclusion_logic}{Style.RESET_ALL}")
-    print(f"  结论 (Text):  {Fore.CYAN}{new_case.conclusion_text}{Style.RESET_ALL}")
+    print(f"  Conclusion logic: {Fore.GREEN}{new_case.conclusion_logic}{Style.RESET_ALL}")
+    print(f"  Conclusion text: {Fore.CYAN}{new_case.conclusion_text}{Style.RESET_ALL}")
     
     print("=" * 80)

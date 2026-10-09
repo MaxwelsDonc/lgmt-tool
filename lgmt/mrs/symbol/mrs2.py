@@ -28,7 +28,7 @@ class MRS2(MetamorphicRelation):
         self.name="Predicate Renaming Invariance"
 
     def _extract_predicates(self, expr):
-        """递归提取公式中的所有谓词符号"""
+        """Recursively collect all predicate symbols."""
         from nltk.sem.logic import ApplicationExpression, BinaryExpression, NegatedExpression, VariableBinderExpression
         predicates = set()
         
@@ -51,16 +51,16 @@ class MRS2(MetamorphicRelation):
     
     class _PredicateRenamer():
         """
-        [Inner Class] 专门为 MR-S2 服务的 AST 重写器。
-        替换谓词符号
+        [Inner class] AST rewriter dedicated to MR-S2.
+        Substitute predicate symbols.
         """
         def __init__(self, predicate_mapping=None):
             self.predicate_mapping = predicate_mapping if predicate_mapping else {}
         
         def transform(self, expr):
-            """遍历AST，替换谓词"""
+            """Walk the AST and substitute predicates."""
             if isinstance(expr, ApplicationExpression):
-                # 处理谓词应用，如 Man(socrates)
+                # predicate application, e.g. Man(socrates)
                 func = expr.function
                 arg = expr.argument
                 pred_name = str(func)
@@ -75,33 +75,33 @@ class MRS2(MetamorphicRelation):
                 return self.recursive(expr)
             
         def recursive(self, expr):
-            """递归处理各种类型的表达式"""
+            """Recursively handle every expression type."""
             if isinstance(expr, VariableBinderExpression):
-                # 处理量词表达式 (all x.P(x), exists y.Q(y))
+                # quantified expression
                 return expr.__class__(expr.variable, self.transform(expr.term))
             
             elif isinstance(expr, ApplicationExpression):
-                # 处理函数应用 (P(a), R(x,y))
+                # application
                 return ApplicationExpression(self.transform(expr.function), self.transform(expr.argument))
             
             elif isinstance(expr, BinaryExpression):
-                # 处理二元表达式 (A & B, A | B, A -> B)
+                # binary expression
                 return expr.__class__(self.transform(expr.first), self.transform(expr.second))
             
             elif isinstance(expr, NegatedExpression):
-                # 处理否定表达式 (-A)
+                # negation
                 return NegatedExpression(self.transform(expr.term))
             
             else:
-                # 其他类型直接返回
+                # anything else passes through
                 return expr
     
     # =========================================================================
-    # MR 标准接口实现
+    # standard MR interface implementation
     # =========================================================================
     def check_applicability_logic(self, fol: str) -> bool:
         """
-        判断是否存在谓词可以替换。
+        Check whether any predicate can be renamed.
         """
         try:
             expr = LogicParser().parse(fol)
@@ -113,13 +113,13 @@ class MRS2(MetamorphicRelation):
         return ["P(a)", "R(x,c)", "all x.(P(x) -> Q(a))", "Mortal(socrates)", "exists y.Loves(john,y)"]
 
     def check_applicability(self, test_case: TestCase) -> bool:
-        """判断数据是否能够运用MRS2变换"""
+        """Check whether MRS2 applies to the data."""
         premises_logic : List[str] = test_case.premises_logic
         return any(self.check_applicability_logic(s) for s in premises_logic)
 
     def transform(self, source_TC: TestCase, new_pred_list=None) -> TestCase:
         """
-        (Γ, q) => (Γ', q') 其中所有谓词统一重命名
+        (Γ, q) => (Γ', q'): all predicates are renamed uniformly.
         """
         if new_pred_list is None:
             new_pred_list = ['Pre1', 'Pre2', 'Pre3', 'Pre4', 'Pre5', 'Pre6', 'Pre7', 'Pre8', 'Pre9', 'Pre10']
@@ -127,7 +127,7 @@ class MRS2(MetamorphicRelation):
         follow_TC = copy.deepcopy(source_TC)
         parser = LogicParser()
 
-        # 提取谓词常量
+        # collect the predicates
         all_predicates = set()
         for formula in source_TC.premises_logic + [source_TC.conclusion_logic]:
             try:
@@ -137,7 +137,7 @@ class MRS2(MetamorphicRelation):
             except:
                 pass  
         
-        # 构建映射
+        # build the mapping
         pred_mapping = {}
         sorted_predicates = sorted(list(all_predicates)) 
         for i, pred in enumerate(sorted_predicates):
@@ -149,8 +149,8 @@ class MRS2(MetamorphicRelation):
         
         transformer = self._PredicateRenamer(pred_mapping)
         
-        # 处理前提
-        # 步骤4: 处理前提
+        # rename premises
+        # step 4: rename premises
         new_premises_logic = []
         new_premises_text = []
         for idx, (p_logic, p_text) in enumerate(zip(source_TC.premises_logic, source_TC.premises_text)):
@@ -169,7 +169,7 @@ class MRS2(MetamorphicRelation):
                 new_premises_text.append(p_text)
 
         
-        # 处理结论
+        # rename the conclusion
         try:
             expr = parser.parse(source_TC.conclusion_logic)
             if len(self._extract_predicates(expr)) > 0:
@@ -194,10 +194,10 @@ class MRS2(MetamorphicRelation):
     
 if __name__ == "__main__":
     print("=" * 80)
-    print("测试 MRS2")
+    print("Testing MRS2")
     print("=" * 80)
 
-    # MRS2测试：前提和结论中的常量统一变换
+    # MRS2 test: predicates renamed uniformly in premises and conclusion
     mock_case = TestCase(
         premises_text=["All men are mortal.", "Socrates is a man.","w","x","y","z","a","b","c","d","e"], 
         conclusion_text="Socrates is mortal.",
@@ -217,25 +217,25 @@ if __name__ == "__main__":
         conclusion_logic="Mortal(socrates)"
     )
     
-    print("\n原始测试用例逻辑公式:")
-    print("  前提:")
+    print("\nOriginal test case logic:")
+    print("  Premises:")
     for i, p in enumerate(mock_case.premises_logic, 1):
         print(f"    {i}. {p}")
-    print(f"  结论: {mock_case.conclusion_logic}")
+    print(f"  Conclusion: {mock_case.conclusion_logic}")
 
-    # 实例化 MR-S2
+    # instantiate MR-S2
     mr2 = MRS2()
 
-    # 检查适用性
-    print(f"\n是否适用 MRS2: {mr2.check_applicability(mock_case)}")
+    # check applicability
+    print(f"\nMRS2 applicable: {mr2.check_applicability(mock_case)}")
 
-    # 执行 MR-S2 变换
+    # apply MR-S2
     new2 = mr2.transform(mock_case)
     
-    print("\nMRS2变异后的结果:")
-    print("  前提:")
+    print("\nMRS2 result:")
+    print("  Premises:")
     for i, p in enumerate(new2.premises_logic, 1):
         print(f"    {i}. {p}")
-    print(f"  结论: {new2.conclusion_logic}")
-    print(f"\n常量映射: {new2.metadata.get('mapping', {})}")
+    print(f"  Conclusion: {new2.conclusion_logic}")
+    print(f"\nPredicate mapping: {new2.metadata.get('mapping', {})}")
     print("=" * 80)

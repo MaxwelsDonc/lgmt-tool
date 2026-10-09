@@ -28,44 +28,44 @@ class MRE24(MetamorphicTransform):
             logic_checker=self._LogicChecker()
         )
 
-    # 内部类：专属 Transformer
+    # inner class: dedicated transformer
     class _Transformer(LogicTransformer):
         """
-        [Inner Class] 专门为 MR-E2.4 服务的 AST 重写器 (优化版)。
+        [Inner class] AST rewriter dedicated to MR-E2.4 (optimized).
         """
         def __init__(self):
             self.targets = [AndExpression, OrExpression]
 
         def transform(self, expr: Expression) -> Expression:
             if isinstance(expr, (AndExpression, OrExpression)):
-                # 1. 识别当前算子 (AND 还是 OR)
+                # 1. identify the current operator (AND or OR)
                 target_class = expr.__class__
                 if isinstance(expr, AndExpression):
                     target_id = 0 # Current is AND
                 else:
                     target_id = 1 # Current is OR
                 
-                # 2. [修改点1] 使用 Stack 迭代代替递归 reduction
-                # 目的：防止深层嵌套导致 RecursionError
+                # 2. iterate with an explicit stack instead of recursive reduction
+                # avoids RecursionError on deeply nested formulas
                 elements = []
                 stack = [expr]
                 
                 while stack:
                     curr = stack.pop()
                     if isinstance(curr, target_class):
-                        # 保持原有顺序 (左->右)，Stack 是后进先出，所以先压右，再压左
+                        # keep left-to-right order: push right first, then left
                         stack.append(curr.second)
                         stack.append(curr.first)
                     else:
-                        # 递归变换子节点 (只变孩子，不变当前层逻辑)
+                        # rewrite children only; this level's logic is untouched
                         elements.append(self.transform(curr))
                 
-                # 3. [修改点2] 复杂度熔断
-                # 如果这一层元素太多(>20)，做分配律会爆炸，直接放弃变换，原样返回扁平化结果
+                # 3. complexity guard
+                # distributing a level with >20 elements would blow up; keep the flat form
                 if len(elements) > 20:
                     return reduce(target_class, elements)
 
-                # 4. 寻找分配机会 (例如在 AND 层里找 OR)
+                # 4. look for a distribution opportunity (e.g. an OR inside an AND level)
                 other_expr_id = None
                 search_target_type = self.targets[not target_id]
 
@@ -75,38 +75,38 @@ class MRE24(MetamorphicTransform):
                         break
                 
                 if other_expr_id is not None:
-                    # 找到了！执行分配律
-                    other_expr = elements.pop(other_expr_id) # 取出那个 (B | C)
+                    # found one: distribute
+                    other_expr = elements.pop(other_expr_id)  # take out the (B | C)
                     
-                    # 剩余部分重新组合成 A
+                    # the rest recombines into A
                     if elements:
                         rest_expr = reduce(target_class, elements)
                     else:
                         return other_expr 
 
-                    # 构造新公式
-                    # 例子: A & (B | C) -> (A & B) | (A & C)
-                    new_op_class = self.targets[not target_id] # 外层变 OR
-                    inner_op_class = self.targets[target_id]   # 内层变 AND
+                    # build the new formula
+                    # e.g. A & (B | C) -> (A & B) | (A & C)
+                    new_op_class = self.targets[not target_id]  # outer becomes OR
+                    inner_op_class = self.targets[target_id]  # inner becomes AND
 
-                    # [修改点3] 移除递归调用 self.transform
-                    # 旧代码: return self.transform(new_op_class(...)) -> 会导致死循环
-                    # 新代码: 直接返回单次变换结果
+                    # no recursive self.transform call here
+                    # old code recursed here and could loop forever
+                    # new code returns the single-step result
                     left_part = inner_op_class(rest_expr, other_expr.first)
                     right_part = inner_op_class(rest_expr, other_expr.second)
                     
                     return new_op_class(left_part, right_part)
 
                 else:
-                    # 没找到分配机会，返回扁平化重组后的结果
+                    # no opportunity: return the flattened recombination
                     return reduce(target_class, elements)
             else:
-                # 其他节点走通用递归
+                # generic recursion for other nodes
                 return self.recursive(expr)
         
     class _LogicChecker(LogicChecker):
         """
-        [Inner Class] 专门为 MR-E2.4 服务的 Checker (优化版)。
+        [Inner class] Checker dedicated to MR-E2.4 (optimized).
         """
         def __init__(self):
             self.targets = [AndExpression, OrExpression]
@@ -118,7 +118,7 @@ class MRE24(MetamorphicTransform):
                 else:
                     target_id = 1
                 
-                # [修改点] 使用 Stack 迭代检查
+                # iterative stack-based check
                 stack = [expr]
                 target_class = expr.__class__
                 opposite_class = self.targets[not target_id]
@@ -129,10 +129,10 @@ class MRE24(MetamorphicTransform):
                         stack.append(curr.second)
                         stack.append(curr.first)
                     elif isinstance(curr, opposite_class):
-                        # 发现目标：例如在 AND 链中发现了 OR
+                        # target found: an OR inside an AND chain
                         return True
                     else:
-                        # 检查子节点是否有更深层的机会
+                        # check children for deeper opportunities
                         if self.recursive(curr):
                             return True
                 return False
@@ -140,18 +140,18 @@ class MRE24(MetamorphicTransform):
                 return self.recursive(expr)
 
     # =========================================================================
-    # MR 标准接口实现
+    # standard MR interface implementation
     # =========================================================================
     def source_templates(self) -> list[str]:
         return [ "a & (b | c)", "a | (b & c) | d", "a | (b & c) | (d & e)"]
 
 
 if __name__ == "__main__":
-    # 实例化你要测的 MR
+    # instantiate the MR to test
     mr = MRE24()
     
-    # 构造用户提供的测试用例 (Example ID: 594)
-    # 这是一个非常复杂的嵌套 XOR 展开结构，可能导致性能问题
+    # user-provided test case (example id 594)
+    # deeply nested XOR expansion that used to cause performance issues
     test_case = TestCase(
         premises_logic=[
             "all x. (GreatLake(x) ->((-(((-(((-(((-(Superior(x)) & (Michigan(x))) | ((Superior(x)) & -(Michigan(x))))) & (Huron(x))) | ((((-(Superior(x)) & (Michigan(x))) | ((Superior(x)) & -(Michigan(x))))) & -(Huron(x))))) & (Erie(x))) | ((((-(((-(Superior(x)) & (Michigan(x))) | ((Superior(x)) & -(Michigan(x))))) & (Huron(x))) | ((((-(Superior(x)) & (Michigan(x))) | ((Superior(x)) & -(Michigan(x))))) & -(Huron(x))))) & -(Erie(x))))) & (Ontario(x))) | ((((-(((-(((-(Superior(x)) & (Michigan(x))) | ((Superior(x)) & -(Michigan(x))))) & (Huron(x))) | ((((-(Superior(x)) & (Michigan(x))) | ((Superior(x)) & -(Michigan(x))))) & -(Huron(x))))) & (Erie(x))) | ((((-(((-(Superior(x)) & (Michigan(x))) | ((Superior(x)) & -(Michigan(x))))) & (Huron(x))) | ((((-(Superior(x)) & (Michigan(x))) | ((Superior(x)) & -(Michigan(x))))) & -(Huron(x))))) & -(Erie(x))))) & -(Ontario(x)))))",

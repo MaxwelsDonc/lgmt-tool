@@ -9,7 +9,7 @@ import random
 import json
 from typing import List, Dict, Any
 
-# 设置UTF-8编码以支持Unicode字符
+# force UTF-8 stdout so unicode formulas print correctly
 import io
 if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
     try:
@@ -27,97 +27,97 @@ from lgmt.core.structure import TestCase
 
 class MRP2(MetamorphicRelation):
     """
-    MR-P2: 前提重复
+    MR-P2: premise duplication
     
-    变换规则：从现有前提集合Γ中随机选择 n 个前提，复制并添加到前提集合中
-    适用范围：至少有1个前提的测试用例
+    Rule: randomly pick n premises from Γ, duplicate them, and append the copies.
+    Applies to: test cases with at least 1 premise.
     
-    理论依据：在一阶逻辑中，重复的前提不会改变推理结果
-    例如：{P(a), Q(b)} ⊢ R(c) 等价于 {P(a), P(a), Q(b)} ⊢ R(c)
+    Rationale: in FOL duplicating a premise does not change entailment.
+    E.g. {P(a), Q(b)} |- R(c) is equivalent to {P(a), P(a), Q(b)} |- R(c).
     
-    该变换引入冗余但不添加新信息，可用于测试模型对冗余信息的鲁棒性
+    The added redundancy carries no new information, probing robustness to noise.
     
-    参数：
-        n_duplicates: 要复制的前提数量（默认为1）
-                     - 如果 n_duplicates >= 原前提数量，则每个前提都会被复制一次
-                     - 否则随机选择 n_duplicates 个不同的前提进行复制
+    Args:
+        n_duplicates: how many premises to duplicate (default 1)
+                     - if >= premise count, every premise is duplicated once
+                     - otherwise n_duplicates distinct premises are sampled
     """
     
     def __init__(self, n_duplicates: int = 1):
         self.index = "MR-P2"
         self.name = "Premise Duplication"
-        self.n_duplicates = max(1, n_duplicates)  # 至少复制1个前提
+        self.n_duplicates = max(1, n_duplicates)  # at least one copy
 
     # =========================================================================
-    # MR 标准接口实现
+    # standard MR interface implementation
     # =========================================================================
     def source_templates(self) -> List[str]:
         """
-        MR-P2 是通用的，适用于任何有前提的测试用例
+        MR-P2 is universal: any test case with premises.
         """
-        return []  # 空列表表示通用
+        return []  # universal
     def check_applicability_logic(self, fol: str) -> bool:
         """
-        检查单个 FOL 公式是否适用于 MR-P2（MR-P2 对任何公式都适用）
+        Per-formula applicability check (MR-P2 applies to every formula).
         """
         return True
 
     def check_applicability_formula(self, formula: str) -> bool:
         """
-        单个公式的适用性检查（MR-P2不需要检查单个公式，而是检查前提数量）
+        MR-P2 checks the premise count, not individual formulas.
         """
-        return True  # 对单个公式总是返回True
+        return True  # always true for a single formula
 
     def check_applicability(self, test_case: TestCase) -> bool:
         """
-        检查测试用例是否适用于MR-P2
+        Check whether MR-P2 applies to the test case.
         
-        适用条件：至少有1个前提（才能进行复制）
+        Requires at least 1 premise (nothing to duplicate otherwise).
         """
         return len(test_case.premises_logic) >= 1
 
     def transform(self, stc: TestCase) -> TestCase:
         """
-        执行前提重复变换
+        Perform the premise duplication.
         
-        逻辑：
-        1. 复制前提列表（逻辑形式和文本形式）
-        2. 随机选择 n_duplicates 个前提（如果前提总数少于 n_duplicates，则选择全部）
-        3. 将选中的前提复制并添加到列表末尾
-        4. 保持结论不变
-        5. 返回新的TestCase
+        Steps:
+        1. Copy the premise lists (logic and text).
+        2. Randomly pick n_duplicates premises (all of them if fewer).
+        3. Append copies of the picked premises.
+        4. Keep the conclusion unchanged.
+        5. Return the new TestCase.
         """
-        # 检查是否适用
+        # check applicability
         if not self.check_applicability(stc):
             print(f"[Warning] MR-P2 not applicable: need at least 1 premise, got {len(stc.premises_logic)}")
             return stc
         
-        # 复制前提列表
+        # copy the premise lists
         new_premises_logic = stc.premises_logic.copy()
         new_premises_text = stc.premises_text.copy()
         
-        # 确定实际要复制的数量
+        # resolve the actual number of copies
         actual_n = min(self.n_duplicates, len(new_premises_logic))
         
-        # 随机选择 actual_n 个不同的索引进行复制
+        # sample actual_n distinct premise indices
         if actual_n >= len(new_premises_logic):
-            # 如果要复制的数量 >= 前提总数，复制所有前提
+            # duplicating everything when n >= premise count
             duplicate_indices = list(range(len(new_premises_logic)))
         else:
-            # 否则随机选择 actual_n 个不同的前提
+            # otherwise sample actual_n distinct premises
             duplicate_indices = random.sample(range(len(new_premises_logic)), actual_n)
         
-        # 复制选中的前提并添加到列表末尾
+        # append copies of the picked premises
         for idx in duplicate_indices:
             new_premises_logic.append(new_premises_logic[idx])
-            # 为复制的前提添加 [Changed_{original_index}] 标记
+            # (copies keep the original text; no tag needed)
             new_premises_text.append(new_premises_text[idx])
         
-        # 返回新的TestCase，结论保持不变
+        # return the new TestCase with the conclusion unchanged
         return TestCase(
             premises_text=new_premises_text,
             conclusion_text=stc.conclusion_text,
             premises_logic=new_premises_logic,
             conclusion_logic=stc.conclusion_logic,
-            metadata=stc.metadata.copy()  # 保留元数据
+            metadata=stc.metadata.copy()  # preserve metadata
         )

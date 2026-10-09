@@ -45,7 +45,7 @@ class SubElements:
 
 
 def simplify(elements: list) -> list:
-    # 假设elements有序
+    # assumes elements are ordered
     single_element = []
     list_element = []
     for k in range(len(elements)):
@@ -57,7 +57,7 @@ def simplify(elements: list) -> list:
             else:
                 elements[k] = elements[k][0]
         single_element.append(elements[k])
-    new_single_element = list(dict.fromkeys(single_element))  # 去重
+    new_single_element = list(dict.fromkeys(single_element))  # deduplicate
     if len(new_single_element) < len(single_element):
         GlobalSimplifyFlag.set_true()
     list_element.sort(key=lambda x: len(x))
@@ -107,12 +107,12 @@ class MRE21(MetamorphicTransform):
             self.check_result = None
             self.util_transformer = MRE21.UtilClass._Transformer()
 
-        # 内部类：专属 Transformer
+        # inner class: dedicated transformer
         class _Transformer(LogicTransformer):
             """
-            [Inner Class] 专门为 MR-E2.1 服务的 AST 重写器。
-            继承自 utils.logic_visitor.LogicTransformer，复用其遍历能力。
-            需要对表达式排序后再使用此方法。
+            [Inner class] AST rewriter dedicated to MR-E2.1.
+            Inherits the traversal from LogicTransformer.
+            The expression must be sorted before calling this.
             """
             def __init__(self):
                 self.sub_elements_operator = SubElements()
@@ -167,7 +167,7 @@ class MRE21(MetamorphicTransform):
                 return self.transform_result
 
     # =========================================================================
-    # MR 标准接口实现
+    # standard MR interface implementation
     # =========================================================================
     def source_templates(self) -> list[str]:
         return [
@@ -181,8 +181,8 @@ class MRE21(MetamorphicTransform):
 
 
 if __name__ == "__main__":
-    # 实例化你要测的 MR
+    # instantiate the MR to test
     mr = MRE21()
     
-    # 运行检查
+    # run the check
     mr.sanity_check()

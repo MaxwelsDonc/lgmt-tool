@@ -49,6 +49,11 @@ def build_metamorphic_groups(
         max_workers: parallel build workers (safe for LLM-backed realize)
     """
     mrs = mr_list or ALL_MRS
+    # Shuffle-based MRs consume the global ``random`` module, so the
+    # seed+transform pair is serialized under a lock: deterministic builds
+    # without cross-thread RNG pollution. (LLM-backed realize still runs
+    # concurrently outside the lock.)
+    _transform_lock = threading.Lock()
 
     def _build_one(args: Tuple[int, TestCase]) -> List[MetamorphicGroups]:
         case_idx, case = args
@@ -59,11 +64,12 @@ def build_metamorphic_groups(
         for mr in candidates:
             if len(groups) >= max_per_case:
                 break
-            random.seed(f"{seed}:{case_idx}:{mr.index}")
             try:
-                if not mr.check_applicability(case):
-                    continue
-                followup = mr.transform(case)
+                with _transform_lock:
+                    random.seed(f"{seed}:{case_idx}:{mr.index}")
+                    if not mr.check_applicability(case):
+                        continue
+                    followup = mr.transform(case)
             except Exception as e:
                 logger.warning(f"MR {mr.index} failed on case {case_idx}: {e}")
                 continue

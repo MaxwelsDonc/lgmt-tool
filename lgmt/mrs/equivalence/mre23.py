@@ -24,15 +24,15 @@ class MRE23(MetamorphicTransform):
             logic_checker=self._LogicChecker()
         )
 
-    # 内部类：专属 Transformer
+    # inner class: dedicated transformer
     class _Transformer(LogicTransformer):
         """
-        [Inner Class] 专门为 MR-E1.4 服务的 AST 重写器。
-        继承自 metamorphic_relations.mr_equivalence.equivalence_utils.LogicTransformer，复用其遍历能力。
+        [Inner class] AST rewriter dedicated to MR-E1.4.
+        Inherits the traversal from LogicTransformer.
         """
         def transform(self, expr: Expression) -> Expression:
             """
-            规则: 递归提取且或，按字符串排序
+            Rule: recursively flatten & / | and sort by string.
             """
             if isinstance(expr, (AndExpression, OrExpression)):
                 elements = []
@@ -65,15 +65,15 @@ class MRE23(MetamorphicTransform):
             else:
                 return self.recursive(expr)
         
-    # 内部类：专属 Checker
+    # inner class: dedicated checker
     class _LogicChecker(LogicChecker):
         """
-        [Inner Class] 专门为 MR-E1.4 服务的 AST 重写器。
-        继承自 equivalence_utils.LogicChecker，复用其遍历能力。
+        [Inner class] AST rewriter dedicated to MR-E1.4.
+        Inherits the traversal from LogicChecker.
         """
         def check(self, expr: Expression) -> bool:
             """
-            规则: 递归提取且或
+            Rule: recursively flatten & / |.
             """
             if isinstance(expr, (AndExpression, OrExpression)):
                 e0 = Expression.fromstring('0')
@@ -86,15 +86,15 @@ class MRE23(MetamorphicTransform):
                 return self.recursive(expr)
 
     # =========================================================================
-    # MR 标准接口实现
+    # standard MR interface implementation
     # =========================================================================
     def source_templates(self) -> list[str]:
         return [ "c ∨ (b ∨ 1)", "a ∧ (1 ∧ a)", "c ∨ ((b ∧ 0) ∨ a)", "c ∨ ((1 ∧ d) ∨ a)"]
 
 
 if __name__ == "__main__":
-    # 实例化你要测的 MR
+    # instantiate the MR to test
     mr = MRE23()
     
-    # 运行检查
+    # run the check
     mr.sanity_check()

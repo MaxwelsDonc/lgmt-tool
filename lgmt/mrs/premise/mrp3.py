@@ -9,13 +9,13 @@ import random
 import json
 from typing import List, Dict, Any
 
-# 设置UTF-8编码以支持Unicode字符（仅在未设置过时）
+# force UTF-8 stdout so unicode formulas print correctly (once)
 import io
 if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
     try:
         sys.stdout.reconfigure(encoding='utf-8')
     except (AttributeError, ValueError):
-        pass  # 如果无法重设，继续使用现有配置
+        pass  # keep the existing encoding if it cannot be changed
 
 
 from lgmt.core.structure import MetamorphicRelation
@@ -24,12 +24,12 @@ from lgmt.core.structure import TestCase
 
 class MRP3(MetamorphicRelation):
     """
-    MR-P3: 无关扩展
+    MR-P3: irrelevant extension
     
-    变换规则：向前提集合中添加一个逻辑上无关但不矛盾的前提
+    Rule: add a logically irrelevant (but consistent) premise to Γ.
     
-    无关前提的生成：
-    - 采用数学公式形式，如 "1+1=2", "5*2=10" 等
+    Irrelevant-premise generation:
+    - arithmetic identities such as "1+1=2", "5*2=10"
     """
     
     def __init__(self):
@@ -37,46 +37,46 @@ class MRP3(MetamorphicRelation):
         self.name = "Irrelevant Extension"
 
     # =========================================================================
-    # MR 标准接口实现
+    # standard MR interface implementation
     # =========================================================================
     def source_templates(self) -> List[str]:
         """
-        MR-P3 是通用的，适用于任何测试用例
+        MR-P3 is universal: any test case.
         """
-        return []  # 空列表表示通用
+        return []  # universal
 
     def check_applicability_logic(self, fol: str) -> bool:
         """
-        检查单个 FOL 公式是否适用于 MR-P3（MR-P3 对任何公式都适用）
+        Per-formula applicability check (MR-P3 applies to every formula).
         """
         return True
 
     def check_applicability_formula(self, formula: str) -> bool:
         """
-        单个公式的适用性检查（MR-P3对所有公式都适用）
+        MR-P3 applies to every formula.
         """
         return True
 
     def check_applicability(self, test_case: TestCase) -> bool:
         """
-        检查测试用例是否适用于MR-P3
+        Check whether MR-P3 applies to the test case.
         
-        适用条件：MR-P3 对所有测试用例都适用，因为无关前提可以添加到任何前提集合中
+        Always applicable: an irrelevant premise can extend any premise set.
         """
         return True
 
     # =========================================================================
-    # 无关前提生成方法
+    # irrelevant-premise generation
     # =========================================================================
     def _generate_arithmetic_formula(self) -> tuple:
         """
-        生成一个随机的数学公式（无关前提）
-        采用复杂的形式，涉及平方、幂等操作
+        Generate a random arithmetic formula (the irrelevant premise).
+        Uses powers for a non-trivial shape.
         
         Returns:
-            tuple: (逻辑形式, 自然语言形式)
+            tuple: (logic form, natural-language form)
         """
-        # 平方、幂等操作
+        # powers of a small base
         num1 = random.randint(2, 12)
         power = random.randint(2, 4)
         result = num1 ** power
@@ -87,47 +87,47 @@ class MRP3(MetamorphicRelation):
 
     def _generate_irrelevant_premise(self) -> tuple:
         """
-        生成一个无关前提
+        Generate one irrelevant premise.
         
         Returns:
-            tuple: (逻辑形式, 自然语言形式)
+            tuple: (logic form, natural-language form)
         """
         return self._generate_arithmetic_formula()
 
     # =========================================================================
-    # 主要变换方法
+    # main transform
     # =========================================================================
     def transform(self, stc: TestCase) -> TestCase:
         """
-        执行无关扩展变换
+        Perform the irrelevant extension.
         
-        逻辑：
-        2. 生成一个无关前提（数学公式）
-        3. 将其添加到前提集合末尾
-        4. 保持结论不变
-        5. 返回新的 TestCase
+        Steps:
+        2. Generate an irrelevant premise (arithmetic identity).
+        3. Append it to the premise set.
+        4. Keep the conclusion unchanged.
+        5. Return the new TestCase.
         """
         
-        # 复制前提列表
+        # copy the premise lists
         new_premises_logic = stc.premises_logic.copy()
         new_premises_text = stc.premises_text.copy()
         
-        # 生成无关前提
+        # generate the irrelevant premise
         irrelevant_logic, irrelevant_text = self._generate_irrelevant_premise()
         
-        # 添加到前提集合末尾
+        # append it to the premise set
         new_premises_logic.append(irrelevant_logic)
-        # 为新增的无关前提添加标记
-        # 使用 [Added_{index}] 标记表示这是新添加的前提，index 是其在列表中的位置
-        index = len(new_premises_logic) - 1  # 新前提的索引
+        # (tagging note)
+        # an [Added_{index}] tag would mark the appended premise at position index
+        index = len(new_premises_logic) - 1  # index of the new premise
         new_premises_text.append(irrelevant_text)
         
-        # 返回新的 TestCase，结论保持不变
+        # return the new TestCase with the conclusion unchanged
         return TestCase(
             premises_text=new_premises_text,
             conclusion_text=stc.conclusion_text,
             premises_logic=new_premises_logic,
             conclusion_logic=stc.conclusion_logic,
-            metadata=stc.metadata.copy()  # 保留元数据
+            metadata=stc.metadata.copy()  # preserve metadata
         )
 

@@ -4,7 +4,7 @@ Subcommands:
     build-mgs   source test cases -> metamorphic groups (MR transform + optional NL realize)
     run         inference over MGs + metamorphic oracle consistency check
     report      metrics (MVR / acc / HDR / FUR) + HTML report
-    audit       back-translation fidelity audit (FOL2NL_validate)
+    audit       back-translation fidelity audit
     demo        offline end-to-end demo with a mock model (no keys, no network)
 """
 import argparse
@@ -112,6 +112,7 @@ def cmd_run(args) -> int:
         prompting=settings.prompting,
         result_save_path=args.output,
         max_workers=settings.max_workers,
+        temperature=settings.temperature,
     )
     print(f"Results written to {path}")
     return 0
@@ -355,7 +356,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # audit
     p = sub.add_parser(
-        "audit", help="Audit Logic-to-NL back-translation fidelity (FOL2NL_validate)."
+        "audit", help="Audit Logic-to-NL back-translation fidelity."
     )
     p.add_argument("--mgs", required=True, help="Metamorphic group JSONL.")
     p.add_argument("--output", required=True, help="Audit record JSONL.")

@@ -25,15 +25,15 @@ class MRE13(MetamorphicTransform):
             logic_checker=self._LogicChecker()
         )
 
-    # 内部类：专属 Transformer
+    # inner class: dedicated transformer
     class _Transformer(LogicTransformer):
         """
-        [Inner Class] 专门为 MR-E1.3 服务的 AST 重写器。
-        继承自 utils.logic_visitor.LogicTransformer，复用其遍历能力。
+        [Inner class] AST rewriter dedicated to MR-E1.3.
+        Inherits the traversal from LogicTransformer.
         """
         def transform(self, expr: Expression) -> Expression:
             """
-            规则: 先提取或且，然后看里面的表达式是否为All或者Exists
+            Rule: inspect & / | chains for All/Exists sub-expressions.
             """
             if isinstance(expr, (AndExpression, OrExpression)):
                 if (isinstance(expr.first, (AllExpression, ExistsExpression)) and 
@@ -52,15 +52,15 @@ class MRE13(MetamorphicTransform):
                 return self.recursive(expr)
             
             
-    # 内部类：专属 Checker
+    # inner class: dedicated checker
     class _LogicChecker(LogicChecker):
         """
-        [Inner Class] 专门为 MR-E1.3 服务的 AST 重写器。
-        继承自 equivalence_utils.LogicChecker，复用其遍历能力。
+        [Inner class] AST rewriter dedicated to MR-E1.3.
+        Inherits the traversal from LogicChecker.
         """
         def check(self, expr: Expression) -> bool:
             """
-            规则: 先提取或且，然后看里面的表达式是否为All或者Exists
+            Rule: inspect & / | chains for All/Exists sub-expressions.
             """
             if isinstance(expr, (AndExpression, OrExpression)):
                 if (isinstance(expr.first, (AllExpression, ExistsExpression)) and 
@@ -75,7 +75,7 @@ class MRE13(MetamorphicTransform):
                 return self.recursive(expr)
 
     # =========================================================================
-    # MR 标准接口实现
+    # standard MR interface implementation
     # =========================================================================
     def source_templates(self) -> list[str]:
         return [
@@ -86,8 +86,8 @@ class MRE13(MetamorphicTransform):
 
 
 if __name__ == "__main__":
-    # 实例化你要测的 MR
+    # instantiate the MR to test
     mr = MRE13()
     
-    # 运行检查
+    # run the check
     mr.sanity_check()

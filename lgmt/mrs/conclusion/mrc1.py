@@ -1,12 +1,12 @@
 """
 MR-C1: Conjunction with Truth
-规则: (Γ, q) => (Γ, q ^ 1)
+Rule: (Γ, q) => (Γ, q ^ 1)
 """
 import copy
 import sys
 import os
 
-# 路径适配
+# path adaptation
 
 from typing import List
 from nltk.sem.logic import LogicParser, AndExpression
@@ -28,7 +28,7 @@ class MRC1(MetamorphicRelation):
 
     def transform(self, source_TC: TestCase) -> TestCase:
         """
-        执行变换：
+        Transform:
         Logic: q -> q & 1
         Text:  text -> [Changed_Conclusion] (text) and it is true
         """
@@ -42,7 +42,7 @@ class MRC1(MetamorphicRelation):
         try:
             ascii_formula = _normalize(source_TC.conclusion_logic)
             ast = parser.parse(ascii_formula)
-            # 创建  '1' 的表达式节点
+            # build the constant '1' expression node
             true_expr = parser.parse("1")
             
             # (Original) & 1
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     from colorama import Fore, Style 
 
     print("=" * 80)
-    print("测试 MRC1 (Conjunction with Truth)")
+    print("Testing MRC1 (Conjunction with Truth)")
     print("=" * 80)
 
     mock_case = TestCase(
@@ -76,25 +76,25 @@ if __name__ == "__main__":
         conclusion_logic="Mortal(socrates)"
     )
     
-    print("\n[原始测试用例 (Original)]")
-    print("  前提 (Premises):")
+    print("\n[Original test case]")
+    print("  Premises:")
     for i, p in enumerate(mock_case.premises_logic, 1):
         print(f"    {i}. {p}")
-    print(f"  结论 (Conclusion Logic): {mock_case.conclusion_logic}")
-    print(f"  结论文本 (Conclusion Text): {mock_case.conclusion_text}")
+    print(f"  Conclusion logic: {mock_case.conclusion_logic}")
+    print(f"  Conclusion text: {mock_case.conclusion_text}")
 
-    # 实例化 MR
+    # instantiate the MR
     mr = MRC1()
-    print(f"\n是否适用 (Applicability): {mr.check_applicability(mock_case)}")
+    print(f"\nApplicable: {mr.check_applicability(mock_case)}")
     new_case = mr.transform(mock_case)
     
-    print("\n[MRC1 变换后结果 (Transformed)]")
-    print("  前提 (Premises) [应保持不变]:")
+    print("\n[MRC1 transformed]")
+    print("  Premises (must stay unchanged):")
     for i, p in enumerate(new_case.premises_logic, 1):
         status = "(Unchanged)" if p == mock_case.premises_logic[i-1] else "(CHANGED - WARNING!)"
         print(f"    {i}. {p} {status}")
 
-    print(f"  结论 (Conclusion Logic): {Fore.GREEN}{new_case.conclusion_logic}{Style.RESET_ALL}")
-    print(f"  结论文本 (Conclusion Text): {Fore.CYAN}{new_case.conclusion_text}{Style.RESET_ALL}")
+    print(f"  Conclusion logic: {Fore.GREEN}{new_case.conclusion_logic}{Style.RESET_ALL}")
+    print(f"  Conclusion text: {Fore.CYAN}{new_case.conclusion_text}{Style.RESET_ALL}")
     
     print("=" * 80)

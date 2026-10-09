@@ -25,22 +25,22 @@ class MRE11(MetamorphicTransform):
             logic_checker=None
         )
 
-    # 内部类：专属 Transformer
+    # inner class: dedicated transformer
     class _Transformer(LogicTransformer):
         """
-        [Inner Class] 专门为 MR-E1.1 服务的 AST 重写器。
-        继承自 utils.logic_visitor.LogicTransformer，复用其遍历能力。
+        [Inner class] AST rewriter dedicated to MR-E1.1.
+        Inherits the traversal from LogicTransformer.
         """
         def transform(self, expr: Expression) -> Expression:
-            # 这里的 self 是 _Transformer 实例，不是外部 MR 实例
-            # 调用父类 (LogicTransformer) 的 recursive 来递归处理子节点
+            # note: self here is the _Transformer instance
+            # recurse into children via the base LogicTransformer
             if isinstance(expr, ImpExpression):
-                # 规则: P -> Q  =>  - P | Q
+                # rule: P -> Q  =>  - P | Q
                 left = self.recursive(expr.first)
                 right = self.recursive(expr.second)
                 return OrExpression(NegatedExpression(left), right)
             elif isinstance(expr, IffExpression):  
-                # 规则: P <-> Q => (~P | Q) & (~Q | P)
+                # rule: P <-> Q => (~P | Q) & (~Q | P)
                 left = self.recursive(expr.first)
                 right = self.recursive(expr.second)
                 
@@ -52,7 +52,7 @@ class MRE11(MetamorphicTransform):
 
 
     # =========================================================================
-    # MR 标准接口实现
+    # standard MR interface implementation
     # =========================================================================
     def source_templates(self) -> list[str]:
         return [ "A -> B", "A <-> B"]
@@ -62,10 +62,10 @@ class MRE11(MetamorphicTransform):
         return any(s in formula for s in target_symbols)
 
 if __name__ == "__main__":
-    # 实例化你要测的 MR
+    # instantiate the MR to test
     mr = MRE11()
     
-    # 准备几个经典的逻辑公式（包含 Unicode）
+    # a few classic formulas (incl. unicode)
     test_cases = [
         "all x. (MichaelsNeightbor(x) & GrowIn(x, vegetable, garden) -> Have(x, ampleSpace))"
     ]

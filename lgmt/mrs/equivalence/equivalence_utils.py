@@ -14,7 +14,7 @@ from lgmt.core.structure import TestCase, MetamorphicRelation
 
 def get_indiv_vars(e: Expression) -> list:
     """
-    把expr中所有的变量(IndividualVariableExpression)提取出来。
+    Collect every IndividualVariableExpression in ``expr``.
     """
     if isinstance(e, IndividualVariableExpression):
         return [e]
@@ -26,19 +26,19 @@ def get_indiv_vars(e: Expression) -> list:
 
 class LogicTransformer(abc.ABC):
     """
-    AST 递归变换基类 (Visitor Pattern)。
-    作用：遍历 NLTK 的逻辑表达式树，并允许子类在遍历过程中修改特定节点。
+    Base class for recursive AST rewriting (visitor pattern).
+    Walks the NLTK logic-expression tree and lets subclasses rewrite nodes.
     """
 
     @abc.abstractmethod
     def transform(self, expr: Expression) -> Expression:
         """
-        写出`expr`的变换方法
+        Rewrite ``expr``.
         """
         return expr
 
     def recursive(self, expr: Expression) -> Expression:
-        """一般分发方法"""
+        """Generic dispatch."""
         if isinstance(expr, AbstractVariableExpression):
             return expr
         else:
@@ -47,18 +47,18 @@ class LogicTransformer(abc.ABC):
 
 class LogicChecker(abc.ABC):
     """
-    [Inner Class] 用于检查是否存在该逻辑
+    [Inner class] Checks whether the target pattern exists.
     """
 
     @abc.abstractmethod
     def check(self, expr: Expression) -> Expression:
         """
-        检查`expr`是否符合MR适用要求
+        Check whether ``expr`` satisfies the MR applicability condition.
         """
         raise NotImplementedError("define your check function")
 
     def recursive(self, expr: Expression) -> Expression:
-        """一般分发方法"""
+        """Generic dispatch."""
         if isinstance(expr, AbstractVariableExpression):
             return False
         else:
@@ -87,7 +87,7 @@ class MetamorphicTransform(MetamorphicRelation):
         return False
 
     def transform(self, stc: TestCase) -> TestCase:
-        # 处理前提
+        # premises
         new_premises_formulas = []
         new_premises_text = []
         for index, premises_formula_str in enumerate(stc.premises_logic):
@@ -98,34 +98,34 @@ class MetamorphicTransform(MetamorphicRelation):
 
             # 2. Parse (Str -> AST)
             ast = self.parser.parse(premises_formula_str)
-            # 3. Transform (AST -> AST) - 使用内部类实例
+            # 3. transform (AST -> AST)
             new_ast = self.transformer.transform(ast)
             # 4. Stringify (AST -> ASCII Str)
             new_ascii_str = str(new_ast)
 
             new_premises_formulas.append(new_ascii_str)
-            if str(new_ast) != str(ast):  # 公式内容不一样
+            if str(new_ast) != str(ast):  # formula content changed
                 new_premises_text.append(
                     f"[Changed_{index}] {stc.premises_text[index]}"
                 )
             else:
                 new_premises_text.append(stc.premises_text[index])
 
-        # 处理结论
+        # conclusion
         if self.check_applicability_logic(stc.conclusion_logic):
             # 2. Parse (Str -> AST)
             ast = self.parser.parse(stc.conclusion_logic)
-            # 3. Transform (AST -> AST) - 使用内部类实例
+            # 3. transform (AST -> AST)
             new_ast = self.transformer.transform(ast)
             # 4. Stringify (AST -> ASCII Str)
             new_ascii_str = str(new_ast)
             # 5. Denormalize (ASCII -> Unicode)
             new_conclusion_logic = new_ascii_str
-            if new_ast != ast:  # 公式内容不一样
+            if new_ast != ast:  # formula content changed
                 new_conclusion_text = f"[Changed_conclusion] {stc.conclusion_text}"
             elif (
                 new_ascii_str != stc.conclusion_logic
-            ):  # 公式内容一样但是前后字符串不一样
+            ):  # same formula, different surface string
                 try:
                     if self.parser.parse(new_ascii_str[1:-1]) == ast:
                         new_conclusion_text = stc.conclusion_text
@@ -133,7 +133,7 @@ class MetamorphicTransform(MetamorphicRelation):
                         new_conclusion_text = (
                             f"[Changed_conclusion] {stc.conclusion_text}"
                         )
-                except:
+                except Exception:
                     new_conclusion_text = f"[Changed_conclusion] {stc.conclusion_text}"
             else:
                 new_conclusion_text = stc.conclusion_text
