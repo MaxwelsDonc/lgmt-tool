@@ -1,5 +1,5 @@
 # ======================================================
-# System Prompt: 定义规则、角色和输出格式 (静态部分)
+# System prompt: rules, role, and output format (static part)
 # ======================================================
 # SYSTEM_PROMPT = """You are a strict Logic-to-Language Translator. Convert the Transformed Logic Formula into Natural Language while preserving all structural, redundant, and logical characteristics.
 
@@ -62,7 +62,7 @@ SYSTEM_PROMPT = """You are a strict Logic-to-Language Translator. Your goal is t
 Output a single JSON object containing the translation.
 """
 # ======================================================
-# User Prompt Template: 定义动态数据部分
+# User prompt template: dynamic data part
 # ======================================================
 USER_PROMPT_TEMPLATE = """# Input Data
 Original Formula (Context Only): {original_fol}

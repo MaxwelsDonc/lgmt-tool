@@ -1,6 +1,8 @@
 """JSONL I/O for test cases, metamorphic groups, and inference records."""
 import json
 import os
+
+from loguru import logger
 from dataclasses import asdict
 from typing import Any, Dict, Iterable, List
 
@@ -22,10 +24,10 @@ def load_test_cases(file_path: str) -> List[TestCase]:
     try:
         return [TestCase(**record) for record in _load_jsonl(file_path)]
     except FileNotFoundError:
-        print(f"Error: File not found - {file_path}")
+        logger.error(f"File not found - {file_path}")
         return []
     except json.JSONDecodeError:
-        print(f"Error: JSON decoding error in file - {file_path}")
+        logger.error(f"JSON decoding error in file - {file_path}")
         return []
 
 
@@ -35,7 +37,7 @@ def save_test_cases(file_path: str, test_cases: List[TestCase]) -> None:
     with open(file_path, "w", encoding="utf-8") as f:
         for tc in test_cases:
             f.write(json.dumps(asdict(tc), ensure_ascii=False) + "\n")
-    print(f"Success: Saved {len(test_cases)} test cases to {file_path}")
+    logger.success(f"Saved {len(test_cases)} test cases to {file_path}")
 
 
 def load_metamorphic_groups(file_path: str) -> List[MetamorphicGroups]:
@@ -55,10 +57,10 @@ def load_metamorphic_groups(file_path: str) -> List[MetamorphicGroups]:
             )
         return mgs
     except FileNotFoundError:
-        print(f"Error: File not found - {file_path}")
+        logger.error(f"File not found - {file_path}")
         return []
     except (json.JSONDecodeError, KeyError) as e:
-        print(f"Error: malformed metamorphic group in {file_path}: {e}")
+        logger.error(f"Malformed metamorphic group in {file_path}: {e}")
         return []
 
 
@@ -68,7 +70,7 @@ def save_metamorphic_groups(file_path: str, mgs: List[MetamorphicGroups]) -> Non
     with open(file_path, "w", encoding="utf-8") as f:
         for mg in mgs:
             f.write(json.dumps(asdict(mg), ensure_ascii=False) + "\n")
-    print(f"Success: Saved {len(mgs)} metamorphic groups to {file_path}")
+    logger.success(f"Saved {len(mgs)} metamorphic groups to {file_path}")
 
 
 def load_inference_records(file_path: str) -> List[Dict[str, Any]]:
@@ -76,7 +78,7 @@ def load_inference_records(file_path: str) -> List[Dict[str, Any]]:
     try:
         return _load_jsonl(file_path)
     except FileNotFoundError:
-        print(f"Error: File not found - {file_path}")
+        logger.error(f"File not found - {file_path}")
         return []
 
 

@@ -15,9 +15,6 @@ from typing import Any, Dict, Optional, Sequence
 from lgmt.models.base import LLMClient
 from lgmt.utils.labels import canonical_label
 
-#: Default MR categories the ``flawed`` persona gets wrong on follow-ups.
-DEFAULT_FLIP_CATEGORIES = ("E", "P")
-
 _FLIP_MAP = {"True": "False", "False": "True", "Unknown": "False"}
 
 

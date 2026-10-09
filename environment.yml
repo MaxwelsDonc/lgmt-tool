@@ -1,34 +1,25 @@
 name: lgmt_env
 channels:
-  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge/
-  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/
-  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/
+  - conda-forge
   - defaults
 dependencies:
-  # --- 1. 核心语言环境 ---
   - python=3.12
   - pip
 
-  # --- 2. 高性能数据与逻辑处理 ---
-  - numpy           # 矩阵运算
-  - pandas          # 数据分析 (CSV/Excel)
-  - scikit-learn    # 实验指标计算 (F1/Recall等)
-  - orjson          # 高性能 JSON 库 
-  - jsonschema      # JSON 结构验证 
+  # core runtime (mirrors requirements.txt)
+  - pyyaml
+  - jsonschema
+  - loguru
+  - tqdm
+  - colorama
 
-  # --- 3. 科研开发效率工具 ---
-  - tqdm            # 进度条
-  - loguru          # 优雅日志
-  - pytest          # 单元测试
-  - rich            # 终端美化
-  - pyyaml          # 配置文件读取
+  # test/development extras (mirrors requirements-dev.txt)
+  - pytest
+  - z3-solver
+  - nltk
 
-  # --- 3.1 数学与逻辑求解器 ---
-  - z3-solver         # 微软 Z3 逻辑求解器
-
-  # --- 4. 特定版本依赖 ---
+  # pip-only packages
   - pip:
-    - colorama==0.4.6
-    - nltk==3.9.2       # 核心 NLP 库
-    - openai==2.18.0    # 大模型 API
-    - json_repair>=0.30 # 容错 JSON 解析
+    - openai>=1.0
+    - httpx>=0.27
+    - json-repair>=0.30

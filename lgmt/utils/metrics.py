@@ -1,6 +1,6 @@
 """Metamorphic evaluation metrics (MVR / acc / HDR / FUR).
 
-Formulas follow the LGMT evaluation (see ``experiments/``):
+Formulas follow the LGMT evaluation:
 
 - MVR (Metamorphic Violation Rate): fraction of MGs whose source and
   follow-up verdicts disagree.

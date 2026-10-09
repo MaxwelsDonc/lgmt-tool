@@ -140,7 +140,7 @@ Now please answer the following question:
 """
 
 # ======================================================
-# User Prompt Template: 仅包含当前测试的变量
+# User prompt template: only the per-case variables
 # ======================================================
 USER_PROMPT_TEMPLATE = """
 Premises:
