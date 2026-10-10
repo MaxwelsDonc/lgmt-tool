@@ -40,7 +40,7 @@ for the offline demo):
 git clone https://github.com/MaxwelsDonc/lgmt-tool.git
 cd lgmt-tool
 python -m venv .venv && source .venv/bin/activate   # Windows PowerShell: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt && pip install -e .
+pip install -e .
 
 lgmt demo            # 40 groups, offline mock model → demo_output/report.html
 lgmt demo --full     # same tour on the full 3,091-group benchmark
@@ -69,7 +69,7 @@ printing cleanly; if anything else misbehaves, use the Docker option.
 ## Tests
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -e ".[dev]"
 pytest        # 73 passed, 5 skipped (rare-MR applicability skips)
 ```
 

@@ -16,9 +16,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install the package first so layers cache independently of data.
-COPY requirements.txt pyproject.toml ./
+COPY pyproject.toml ./
 COPY lgmt ./lgmt
-RUN pip install -r requirements.txt && pip install .
+RUN pip install .
 
 # Source test cases (for `lgmt build-mgs`) and demo assets.
 COPY data ./data

@@ -132,9 +132,10 @@ def cmd_report(args) -> int:
         if not records:
             print(f"Error: no inference records loaded from {path}")
             return 1
+        models = args.model or []
         name = (
-            args.model[i]
-            if i < len(args.model)
+            models[i]
+            if i < len(models)
             else (Path(path).stem if len(args.results) == 1 else f"run {i + 1}")
         )
         runs.append(
