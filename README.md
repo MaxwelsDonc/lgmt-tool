@@ -77,6 +77,22 @@ MR equivalence (Z3-backed), label canonicalization, mock self-consistency,
 CLI end-to-end, and report rendering. CI runs the same suite on
 Windows/macOS/Linux × Python 3.10–3.13.
 
+## Extending LGMT with a custom MR
+
+```python
+from lgmt.core.structure import MetamorphicRelation, TestCase
+
+class MyMR(MetamorphicRelation):
+    def check_applicability(self, tc: TestCase) -> bool: ...
+    def source_templates(self) -> list[str]: return []
+    def transform(self, tc: TestCase) -> TestCase: ...
+```
+
+Implement the three methods and add the class to `lgmt.mrs` — it is picked
+up by `lgmt build-mgs` automatically. The 20 built-in MRs use exactly this
+API, and their equivalence preservation is guarded by
+`tests/test_mr_equivalence.py` (Z3-backed).
+
 ## Repository layout
 
 ```
