@@ -17,6 +17,7 @@ import json
 import os
 import re
 import tempfile
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from lgmt.core.builder import build_metamorphic_groups, make_realize_fn
@@ -33,7 +34,7 @@ from lgmt.utils.labels import canonical_label
 from lgmt.utils.metrics import compute_metrics, format_metrics_table
 from lgmt.utils.report import generate_run_report
 
-DEMO_MGS_PATH = os.path.join(os.path.dirname(__file__), "demo", "demo_mgs.jsonl")
+DEMO_MGS_PATH = str(Path(__file__).resolve().parent / "demo" / "demo_mgs.jsonl")
 
 EXAMPLE_JSONL = """\
 {"premises_logic": ["all x.(Man(x) -> Mortal(x))", "Man(socrates)"],

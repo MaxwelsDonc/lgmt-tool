@@ -9,6 +9,16 @@ description = "Logic-Guided Metamorphic Testing for evaluating LLM logical reaso
 readme = { text = "LGMT: first-order-logic metamorphic testing for LLM logical reasoning.", content-type = "text/plain" }
 requires-python = ">=3.10"
 license = { text = "MIT" }
+classifiers = [
+    "Operating System :: OS Independent",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
 dependencies = [
     "nltk>=3.9",
     "openai>=1.0",

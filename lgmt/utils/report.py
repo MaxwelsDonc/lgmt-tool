@@ -16,12 +16,13 @@ import html
 import json
 import os
 import re
+from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from lgmt.core.structure import MetamorphicGroups, TestCase
 
-REFERENCE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "reference_metrics.json")
+REFERENCE_PATH = str(Path(__file__).resolve().parent.parent / "data" / "reference_metrics.json")
 REFERENCE_PROMPTING = "zero_cot"
 REFERENCE_SNAPSHOT = "snapshot 2026-09, LGMT v0.1"
 

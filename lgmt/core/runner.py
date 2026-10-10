@@ -259,7 +259,7 @@ def run_inference(
     log_dir = os.path.join(os.path.dirname(os.path.abspath(result_save_path)), "logs")
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, f"inference_{time.strftime('%Y%m%d_%H%M%S')}.log")
-    logger.add(log_file, rotation="10 MB", retention="5 days", level="INFO")
+    logger.add(log_file, rotation="10 MB", retention="5 days", level="INFO", encoding="utf-8")
 
     logger.info(
         f"Concurrency set to {max_workers} for mode: "

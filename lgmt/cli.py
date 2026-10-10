@@ -10,6 +10,7 @@ Subcommands:
 import argparse
 import os
 import sys
+from pathlib import Path
 from typing import List, Optional
 
 from lgmt.config import resolve_settings
@@ -149,8 +150,8 @@ def cmd_report(args) -> int:
     print(format_metrics_table(current["metrics"]))
 
     mgs = load_metamorphic_groups(args.mgs) if args.mgs else None
-    output = args.output or os.path.join(
-        os.path.dirname(os.path.abspath(current["path"])), "report.html"
+    output = args.output or str(
+        Path(current["path"]).resolve().parent / "report.html"
     )
     extras = [{"model": r["model"], "metrics": r["metrics"]} for r in runs[1:]]
     generate_run_report(
@@ -191,16 +192,14 @@ def cmd_audit(args) -> int:
 
 def _find_full_eval_set() -> Optional[str]:
     """Locate the 3,091-group evaluation set (repo checkout or cwd)."""
-    rel = os.path.join(
-        "data", "metamorphic_group", "processed_mgs_core", "processed_mgs_200.jsonl"
-    )
+    rel = Path("data") / "metamorphic_group" / "processed_mgs_core" / "processed_mgs_200.jsonl"
     candidates = [
-        os.path.join(os.getcwd(), rel),
-        os.path.join(os.path.dirname(__file__), "..", rel),
+        Path.cwd() / rel,
+        Path(__file__).resolve().parent.parent / rel,
     ]
     for path in candidates:
-        if os.path.exists(path):
-            return os.path.abspath(path)
+        if path.exists():
+            return str(path.resolve())
     return None
 
 
@@ -224,7 +223,7 @@ def cmd_demo(args) -> int:
             return 1
         print(f"[demo] full evaluation set: {mgs_path}")
     else:
-        mgs_path = os.path.join(os.path.dirname(__file__), "demo", "demo_mgs.jsonl")
+        mgs_path = str(Path(__file__).resolve().parent / "demo" / "demo_mgs.jsonl")
     mgs = load_metamorphic_groups(mgs_path)
     if not mgs:
         print(f"Error: no demo metamorphic groups at {mgs_path}")
@@ -393,6 +392,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    # Windows consoles default to a legacy code page (e.g. cp936/GBK);
+    # force UTF-8 output so logic symbols and progress bars never crash.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.config is None and os.path.exists("config.yaml"):
