@@ -108,10 +108,10 @@ repository, not here.
 
 ## License & attribution
 
-Code: [MIT](LICENSE) — Copyright (c) 2026 Zenghui Zhou and contributors.
-The bundled evaluation data derives from FOLIO (CC BY-SA 4.0), LogicNLI, and
-ProverQA, which carry their own terms — see
-[data/README.md](data/README.md) for the full data-provenance statement.
+Code: [MIT](LICENSE). The bundled data derives from FOLIO, LogicNLI, and
+ProverQA under their own terms — see
+[data/README.md](data/README.md). If you use this tool, please cite the
+companion paper.
 
 ## Citation
 
