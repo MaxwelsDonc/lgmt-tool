@@ -184,7 +184,32 @@ def process_group(
             temperature=temperature,
         )
 
-        # 2. Extract and format labels
+        # 2. Extract and format labels; a response that exhausted its
+        # retries carries an "error" key — flag the group as failed so
+        # metrics exclude it instead of counting a bogus "Unknown" verdict.
+        source_error = source_response.get("error")
+        followup_error = followup_response.get("error")
+        if source_error or followup_error:
+            result = {
+                "mg_id": mg_id,
+                "mr_name": getattr(mg, "mr_name", ""),
+                "mr_index": mg.metadata.get("mr_index", ""),
+                "data_source": mg.metadata.get("data_source", ""),
+                "model": model_name,
+                "prompting": prompting,
+                "ground_truth": ground_truth_label,
+                "error": source_error or followup_error,
+                "is_valid": False,
+            }
+            with RESULT_LOCK:
+                with open(result_save_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(result, ensure_ascii=False) + "\n")
+            logger.warning(
+                f"MG {mg_id}: response parsing failed, recorded as invalid | "
+                f"{source_error or followup_error}"
+            )
+            return True
+
         source_pred_label = canonical_label(source_response.get("label", ""))
         followup_pred_label = canonical_label(followup_response.get("label", ""))
 
@@ -221,6 +246,7 @@ def process_group(
                 "is_correct": followup_is_correct,
             },
             "is_consistent": is_consistent,
+            "is_valid": True,
         }
 
         # 5. Thread-safe Write

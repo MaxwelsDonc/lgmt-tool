@@ -37,7 +37,15 @@ def _mr_category(mr_index: str) -> str:
 
 
 def compute_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Compute overall metrics plus per-MR and per-category breakdowns."""
+    """Compute overall metrics plus per-MR and per-category breakdowns.
+
+    Records flagged with ``is_valid: False`` (e.g. responses whose parsing
+    exhausted all retries) are excluded from every denominator and counted
+    under ``failed``.
+    """
+    valid = [r for r in records if r.get("is_valid", True) and not r.get("error")]
+    failed = len(records) - len(valid)
+    records = valid
     total = len(records)
     source_correct = 0
     both_correct = 0
@@ -124,6 +132,7 @@ def compute_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         "violation_count": violations,
         "hdr_count": hdr_count,
         "fur_count": fur_count,
+        "failed": failed,
     }
 
     def _finalize(bucket: Dict[str, Dict[str, int]]) -> List[Dict[str, Any]]:

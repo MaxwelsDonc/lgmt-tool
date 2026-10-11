@@ -193,7 +193,7 @@ def cmd_audit(args) -> int:
 
 def _find_full_eval_set() -> Optional[str]:
     """Locate the 3,091-group evaluation set (repo checkout or cwd)."""
-    rel = Path("data") / "metamorphic_group" / "processed_mgs_core" / "processed_mgs_200.jsonl"
+    rel = Path("data") / "metamorphic_group" / "processed_mgs_core" / "processed_mgs_3091.jsonl"
     candidates = [
         Path.cwd() / rel,
         Path(__file__).resolve().parent.parent / rel,
@@ -218,7 +218,7 @@ def cmd_demo(args) -> int:
         if mgs_path is None:
             print(
                 "Error: full evaluation set not found. Expected "
-                "data/metamorphic_group/processed_mgs_core/processed_mgs_200.jsonl "
+                "data/metamorphic_group/processed_mgs_core/processed_mgs_3091.jsonl "
                 "in the current directory or the repository root."
             )
             return 1
@@ -271,7 +271,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lgmt",
         description=(
-            "LGMT: Logic-Guided Metamorphic Testing for LLM logical reasoning. "
+            "LGMT: Logic-Grounded Metamorphic Testing for LLM logical reasoning. "
             "Build metamorphic groups, run entailment inference, and evaluate "
             "metamorphic consistency."
         ),

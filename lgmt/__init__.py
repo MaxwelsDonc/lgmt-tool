@@ -1,4 +1,4 @@
-"""LGMT: Logic-Guided Metamorphic Testing for LLM logical reasoning.
+"""LGMT: Logic-Grounded Metamorphic Testing for LLM logical reasoning.
 
 Apply first-order-logic metamorphic relations to entailment test cases,
 run inference against an LLM, and evaluate metamorphic consistency.

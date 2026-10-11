@@ -17,7 +17,7 @@ set -euo pipefail
 MODELS=("$@")
 [ ${#MODELS[@]} -eq 0 ] && { echo "usage: run_multiple_models.sh <model> [model...]" >&2; exit 1; }
 
-BENCH=${BENCH:-data/metamorphic_group/processed_mgs_core/processed_mgs_200.jsonl}
+BENCH=${BENCH:-data/metamorphic_group/processed_mgs_core/processed_mgs_3091.jsonl}
 MOCK_ARGS=()
 [ -n "${LGMT_MOCK:-}" ] && MOCK_ARGS=(--mock "$LGMT_MOCK")
 

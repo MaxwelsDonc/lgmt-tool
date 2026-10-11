@@ -137,6 +137,7 @@ _CSS = """
     .badge { display: inline-block; padding: 2px 10px; font-size: 11.5px; font-weight: 700; border-radius: 10px; color: #fff; }
     .badge-consistent { background: #1f9d55; }
     .badge-violation { background: #d64541; }
+    .badge-error { background: #6b7280; }
     .badge-correct { background: #1287a8; }
     .badge-wrong { background: #e2a13d; color: #4d3a05; }
 
@@ -266,9 +267,11 @@ function buildCompareTable(src, fol){
 }
 
 function cardHtml(rec){
-  var badge = rec.consistent
-    ? '<span class="badge badge-consistent">CONSISTENT</span>'
-    : '<span class="badge badge-violation">VIOLATION</span>';
+  var badge = rec.error
+    ? '<span class="badge badge-error">ERROR</span>'
+    : (rec.consistent
+        ? '<span class="badge badge-consistent">CONSISTENT</span>'
+        : '<span class="badge badge-violation">VIOLATION</span>');
   var srcB = '<span class="badge ' + (rec.src_ok ? 'badge-correct' : 'badge-wrong') + '">source: '
     + esc(rec.src_label) + ' (' + (rec.src_ok ? 'correct' : 'wrong') + ')</span>';
   var folB = '<span class="badge ' + (rec.fol_ok ? 'badge-correct' : 'badge-wrong') + '">follow-up: '
@@ -333,9 +336,14 @@ function updateSentinel(totalViol){
 function updateCount(){
   var f = currentFilter();
   var shown = 0, viol = 0;
-  DATA.forEach(function(rec){ if (recMatches(rec, f)) { shown++; if (!rec.consistent) viol++; } });
+  var failed = 0;
+  DATA.forEach(function(rec){
+    if (recMatches(rec, f)) { shown++; if (rec.error) failed++; else if (!rec.consistent) viol++; }
+  });
   var el = document.getElementById('lgmt-count');
-  if (el) el.textContent = shown + ' shown · ' + viol + ' violations';
+  var txt = shown + ' shown · ' + viol + ' violations';
+  if (failed > 0) txt += ' · ' + failed + ' failed';
+  if (el) el.textContent = txt;
 }
 
 function lgmtFilter(){
@@ -801,6 +809,7 @@ def _record_view(records, mg_by_id) -> str:
                 "cat": category,
                 "gt": str(record.get("ground_truth", "")),
                 "consistent": record.get("is_consistent") is True,
+                "error": bool(record.get("error")),
                 "src_label": str(src_resp.get("response_label", "?")),
                 "src_ok": bool(src_resp.get("is_correct")),
                 "fol_label": str(fol_resp.get("response_label", "?")),
@@ -887,6 +896,10 @@ def generate_run_report(
     meta_bits = [f'model <code>{html.escape(current_name)}</code>']
     meta_bits.append(f"prompting <code>{html.escape(prompting)}</code>")
     meta_bits.append(f"{len(records)} metamorphic groups")
+    if metrics.get("failed"):
+        meta_bits.append(
+            f"<span style='color:#b3261e'>{metrics['failed']} failed (excluded)</span>"
+        )
     meta_bits.append(f"generated {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     if caliber != "custom":
         meta_bits.append(f"caliber <code>{caliber}</code>")

@@ -301,9 +301,9 @@ def build_app():
     empty_metrics = [["scope", "total", "MVR", "acc_src", "acc_cons", "HDR", "FUR"]]
     empty_violations = [["mg_id", "mr", "ground truth", "source verdict", "follow-up verdict"]]
 
-    with gr.Blocks(title="LGMT — Logic-Guided Metamorphic Testing") as app:
+    with gr.Blocks(title="LGMT — Logic-Grounded Metamorphic Testing") as app:
         gr.Markdown(
-            "# LGMT — Logic-Guided Metamorphic Testing\n"
+            "# LGMT — Logic-Grounded Metamorphic Testing\n"
             "Evaluate LLM logical-reasoning reliability with first-order-logic "
             "metamorphic relations. The **Try Demo** tab runs fully offline with a "
             "mock model; **Test Your Model** uses your own API key (kept in memory "

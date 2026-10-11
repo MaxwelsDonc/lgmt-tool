@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lgmt"
 version = "0.1.0"
-description = "Logic-Guided Metamorphic Testing for evaluating LLM logical reasoning reliability"
+description = "Logic-Grounded Metamorphic Testing for evaluating LLM logical reasoning reliability"
 readme = { text = "LGMT: first-order-logic metamorphic testing for LLM logical reasoning.", content-type = "text/plain" }
 requires-python = ">=3.10"
 license = { text = "MIT" }

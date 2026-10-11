@@ -37,14 +37,73 @@ __all__ = [
     "MRE24",
 ]
 
-#: All 20 metamorphic relations, instantiated.
-ALL_MRS = [globals()[name]() for name in __all__]
+
+def _discover_additional():
+    """Auto-discover MR classes added to the subpackages without editing
+    this file.
+
+    Explicit imports above guarantee the canonical 20 in a stable order;
+    this scan picks up any ``MetamorphicRelation`` subclass defined in a
+    module under ``lgmt.mrs`` that is not already registered. It runs after
+    the explicit imports, so every module it imports is fully loadable and
+    there is no circular-import risk.
+    """
+    import importlib
+    import inspect
+    import pkgutil
+
+    from lgmt.core.structure import MetamorphicRelation
+
+    found = []
+    for module_info in pkgutil.iter_modules(__path__):
+        if not module_info.ispkg:
+            continue
+        module = importlib.import_module(f"{__name__}.{module_info.name}")
+        for sub in pkgutil.iter_modules(module.__path__):
+            if sub.name.startswith("_"):
+                continue
+            submodule = importlib.import_module(
+                f"{__name__}.{module_info.name}.{sub.name}"
+            )
+            for _name, obj in inspect.getmembers(submodule, inspect.isclass):
+                if (
+                    issubclass(obj, MetamorphicRelation)
+                    and obj is not MetamorphicRelation
+                    and obj.__module__ == submodule.__name__
+                ):
+                    found.append(obj)
+    return found
+
+
+def _build_registries():
+    classes: dict = {name: globals()[name] for name in __all__}
+    seen_indexes = {cls().index for cls in classes.values()}
+    extra = []
+    for cls in _discover_additional():
+        if cls.__name__ in classes:
+            continue
+        try:
+            instance = cls()
+        except Exception:
+            continue  # MRs must be instantiable without arguments
+        if instance.index in seen_indexes:
+            continue
+        seen_indexes.add(instance.index)
+        classes[cls.__name__] = cls
+        extra.append(cls.__name__)
+    return classes, extra
+
+
+MR_CLASS_REGISTRY, _DISCOVERED = _build_registries()
+
+__all__ = __all__ + _DISCOVERED
+
+#: All metamorphic relations, instantiated (explicit 20 first, discovered
+#: extras after, each in a stable order).
+ALL_MRS = [cls() for cls in MR_CLASS_REGISTRY.values()]
 
 #: Registry mapping MR index (e.g. "MR-E1.5") to the relation instance.
 MR_INDEX_REGISTRY = {mr.index: mr for mr in ALL_MRS}
-
-#: Registry mapping MR class name (e.g. "MRE15") to the MR *class*.
-MR_CLASS_REGISTRY = {name: globals()[name] for name in __all__}
 
 
 def get_mr(name_or_index: str):

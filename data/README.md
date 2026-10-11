@@ -39,7 +39,7 @@ source_test_case/
   logicnli_source_test_case.jsonl   4,245 LogicNLI-derived source cases (post cleaning)
   proverqa_source_test_case.jsonl   1,500 ProverQA-derived source cases
 metamorphic_group/processed_mgs_core/
-  processed_mgs_200.jsonl           the 3,091-group evaluation set
+  processed_mgs_3091.jsonl          the 3,091-group evaluation set
 ../lgmt/demo/demo_mgs.jsonl         40 demo groups (all FOLIO-derived), used by `lgmt demo`
 ```
 
@@ -53,7 +53,7 @@ metamorphic_group/processed_mgs_core/
 | `metadata.data_source` | `FOLIO` / `LogicNLI` / `ProverQA` |
 | `metadata.example_id` | id of the originating source-dataset example (for ProverQA also `metadata.original_file`) |
 
-### MG schema (`processed_mgs_200.jsonl`)
+### MG schema (`processed_mgs_3091.jsonl`)
 
 Each line is one metamorphic group:
 

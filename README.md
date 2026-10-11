@@ -52,7 +52,7 @@ Open `demo_output/report.html` — the leaderboard above is what you get.
 
 ```bash
 export LGMT_API_KEY=sk-...                                     # and LGMT_BASE_URL if not OpenAI
-lgmt run --mgs data/metamorphic_group/processed_mgs_core/processed_mgs_200.jsonl \
+lgmt run --mgs data/metamorphic_group/processed_mgs_core/processed_mgs_3091.jsonl \
          --model your-model --output results.jsonl
 lgmt report --results results.jsonl --output report.html       # your model joins the leaderboard
 ```
