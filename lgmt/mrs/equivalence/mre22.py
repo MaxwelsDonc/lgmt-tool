@@ -98,11 +98,3 @@ class MRE22(MetamorphicTransform):
     # =========================================================================
     def source_templates(self) -> list[str]:
         return [ "a & -a", "-a | a", "a & b & c & -a", "a & b | -a"]
-
-
-if __name__ == "__main__":
-    # instantiate the MR to test
-    mr = MRE22()
-    
-    # run the check
-    mr.sanity_check()

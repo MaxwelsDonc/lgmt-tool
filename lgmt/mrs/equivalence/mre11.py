@@ -60,12 +60,3 @@ class MRE11(MetamorphicTransform):
     def check_applicability_logic(self, formula: str) -> bool:
         target_symbols = ["->", "<->"]
         return any(s in formula for s in target_symbols)
-
-if __name__ == "__main__":
-    # instantiate the MR to test
-    mr = MRE11()
-    
-    # a few classic formulas (incl. unicode)
-    test_cases = [
-        "all x. (MichaelsNeightbor(x) & GrowIn(x, vegetable, garden) -> Have(x, ampleSpace))"
-    ]

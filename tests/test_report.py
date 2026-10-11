@@ -154,7 +154,9 @@ def test_snapshot_date_in_footer(tmp_path):
     records = _synth_records(["x_1"])
     out = tmp_path / "report.html"
     generate_run_report(records, compute_metrics(records), str(out))
-    assert "snapshot 2026-09, LGMT v0.1" in out.read_text(encoding="utf-8")
+    from lgmt import __version__
+
+    assert f"2026-09, LGMT v{__version__}" in out.read_text(encoding="utf-8")
 
 
 def test_smart_collapse_threshold(tmp_path):

@@ -83,11 +83,3 @@ class MRE13(MetamorphicTransform):
             "(all x.A(x) & B(x))",
             "A | (exists x.B)",
         ]
-
-
-if __name__ == "__main__":
-    # instantiate the MR to test
-    mr = MRE13()
-    
-    # run the check
-    mr.sanity_check()

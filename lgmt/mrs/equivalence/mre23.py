@@ -90,11 +90,3 @@ class MRE23(MetamorphicTransform):
     # =========================================================================
     def source_templates(self) -> list[str]:
         return [ "c ∨ (b ∨ 1)", "a ∧ (1 ∧ a)", "c ∨ ((b ∧ 0) ∨ a)", "c ∨ ((1 ∧ d) ∨ a)"]
-
-
-if __name__ == "__main__":
-    # instantiate the MR to test
-    mr = MRE23()
-    
-    # run the check
-    mr.sanity_check()

@@ -74,8 +74,6 @@ class OpenAICompatClient(LLMClient):
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_retries: int = 3,
-        stream: bool = False,
-        return_raw: bool = False,
         max_tokens: int = 4096,
         **_unused: Any,
     ) -> Optional[str]:
@@ -100,7 +98,7 @@ class OpenAICompatClient(LLMClient):
             messages.append({"role": "system", "content": system_text})
         messages.append({"role": "user", "content": user_text})
 
-        kwargs: Dict[str, Any] = {"model": model_name, "messages": messages, "stream": stream}
+        kwargs: Dict[str, Any] = {"model": model_name, "messages": messages}
         if not self.is_reasoning_model(model_name):
             kwargs["temperature"] = temperature
             kwargs["max_tokens"] = max_tokens
@@ -108,26 +106,12 @@ class OpenAICompatClient(LLMClient):
         for attempt in range(max_retries + 1):
             try:
                 response = self.client.chat.completions.create(**kwargs)
-                if stream:
-                    full_content = ""
-                    print(f"\n[Stream Start - {model}]: ", end="", flush=True)
-                    for chunk in response:
-                        delta_content = getattr(chunk.choices[0].delta, "content", "")
-                        if delta_content:
-                            full_content += delta_content
-                            print(delta_content, end="", flush=True)
-                    print("\n[Stream End]\n")
-                    final_raw = response if return_raw else None
-                    return (full_content, final_raw) if return_raw else full_content
-
-                full_content = response.choices[0].message.content.strip()
-                return (full_content, response) if return_raw else full_content
-
+                return response.choices[0].message.content.strip()
             except Exception as e:
                 logger.warning(f"Model: {model} | attempt {attempt + 1}: {e}")
                 if attempt < max_retries:
                     time.sleep(2 ** attempt)
                 else:
-                    return (None, None) if return_raw else None
+                    return None
 
-        return (None, None) if return_raw else None
+        return None

@@ -73,11 +73,3 @@ class MRE16(MetamorphicTransform):
     # =========================================================================
     def source_templates(self) -> list[str]:
         return [ "all x.(exists w.(exists y. all d. all c. all b. exist z. exist r. D(z,y,x)))"]
-
-
-if __name__ == "__main__":
-    # instantiate the MR to test
-    mr = MRE16()
-    
-    # run the check
-    mr.sanity_check()

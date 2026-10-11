@@ -24,7 +24,15 @@ from lgmt.core.structure import MetamorphicGroups, TestCase
 
 REFERENCE_PATH = str(Path(__file__).resolve().parent.parent / "data" / "reference_metrics.json")
 REFERENCE_PROMPTING = "zero_cot"
-REFERENCE_SNAPSHOT = "snapshot 2026-09, LGMT v0.1"
+def _reference_snapshot() -> str:
+    try:
+        from lgmt import __version__
+    except Exception:
+        __version__ = "0.1.0"
+    return f"2026-09, LGMT v{__version__}"
+
+
+REFERENCE_SNAPSHOT = _reference_snapshot()
 
 #: How many violation cards render upfront; more load on demand.
 LAZY_BATCH = 30
@@ -819,7 +827,8 @@ def _record_view(records, mg_by_id) -> str:
                 "fol": fol,
             }
         )
-    return json.dumps(views, ensure_ascii=False)
+    # "</" must not appear inside the inline script tag
+    return json.dumps(views, ensure_ascii=False).replace("</", "<\\/")
 
 
 def _field_from_records(records, field) -> Optional[str]:

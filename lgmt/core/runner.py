@@ -285,7 +285,9 @@ def run_inference(
     log_dir = os.path.join(os.path.dirname(os.path.abspath(result_save_path)), "logs")
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, f"inference_{time.strftime('%Y%m%d_%H%M%S')}.log")
-    logger.add(log_file, rotation="10 MB", retention="5 days", level="INFO", encoding="utf-8")
+    sink_id = logger.add(
+        log_file, rotation="10 MB", retention="5 days", level="INFO", encoding="utf-8"
+    )
 
     logger.info(
         f"Concurrency set to {max_workers} for mode: "
@@ -296,27 +298,32 @@ def run_inference(
     start_time = time.perf_counter()
     success_count = 0
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(
-                process_group,
-                mg,
-                client,
-                model_name,
-                system_prompt_text,
-                result_save_path,
-                cot,
-                prompting,
-                temperature,
-            ): mg
-            for mg in mgs
-        }
-        iterator = as_completed(futures)
-        if not quiet:
-            iterator = tqdm(iterator, total=len(mgs), desc="Inference")
-        for future in iterator:
-            if future.result():
-                success_count += 1
+    try:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    process_group,
+                    mg,
+                    client,
+                    model_name,
+                    system_prompt_text,
+                    result_save_path,
+                    cot,
+                    prompting,
+                    temperature,
+                ): mg
+                for mg in mgs
+            }
+            iterator = as_completed(futures)
+            if not quiet:
+                iterator = tqdm(iterator, total=len(mgs), desc="Inference")
+            for future in iterator:
+                if future.result():
+                    success_count += 1
+    finally:
+        # drop the file sink so repeated calls (e.g. the web app) do not
+        # accumulate handlers
+        logger.remove(sink_id)
 
     total_time = time.perf_counter() - start_time
     logger.success(

@@ -102,6 +102,12 @@ def cmd_run(args) -> int:
         },
     )
     client, model_name = _resolve_client(args, settings)
+    if os.path.exists(args.output) and os.path.getsize(args.output) > 0:
+        if args.resume:
+            print(f"Resuming: new results append to existing {args.output}")
+        else:
+            print(f"Note: overwriting existing {args.output} (use --resume to append)")
+            os.remove(args.output)
     print(
         f"Running inference: model='{model_name}', prompting='{settings.prompting}', "
         f"workers={settings.max_workers}"
@@ -325,6 +331,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--temperature", type=float, default=None)
     p.add_argument("--mock", choices=["consistent", "flawed"], default=None,
                    help="Offline mock model; no API calls.")
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Append to an existing non-empty output file instead of "
+        "overwriting it.",
+    )
     p.set_defaults(func=cmd_run)
 
     # report

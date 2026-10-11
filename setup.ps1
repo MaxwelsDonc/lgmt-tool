@@ -1,5 +1,7 @@
 # LGMT one-command setup (Windows PowerShell).
 # Usage:  .\setup.ps1 [-Dev] [-Demo]
+# If script execution is blocked, run once:
+#   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 param(
     [switch]$Dev,
     [switch]$Demo

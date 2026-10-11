@@ -30,20 +30,21 @@ press). It packages that study's methodology as a reusable tool:
 
 ```bash
 docker build -t lgmt .
-docker run --rm lgmt        # offline demo; report lands in ./demo_output via volume if mounted
+docker run --rm -v $(pwd)/demo_output:/app/demo_output lgmt   # offline demo; report lands in ./demo_output
 ```
 
 **Option 2 — local install** (requires **Python ≥ 3.10**; no API key needed
-for the offline demo):
+for the offline demo). One command — `bash setup.sh` (Windows:
+`powershell -File .\setup.ps1`) — or the manual steps:
 
 ```bash
 git clone https://github.com/MaxwelsDonc/lgmt-tool.git
 cd lgmt-tool
-python -m venv .venv && source .venv/bin/activate   # Windows PowerShell: .venv\Scripts\Activate.ps1
-pip install -e .
+python3 -m venv .venv && source .venv/bin/activate   # Windows PowerShell: .venv\Scripts\Activate.ps1
+pip install -e .            # or bash setup.sh --dev to also install test deps
 
 lgmt demo            # 40 groups, offline mock model → demo_output/report.html
-lgmt demo --full     # same tour on the full 3,091-group benchmark
+lgmt demo --full     # same tour on the full benchmark (overwrites demo_output/)
 ```
 
 Open `demo_output/report.html` — the leaderboard above is what you get.
@@ -61,7 +62,8 @@ Config precedence: CLI flags > `LGMT_API_KEY`/`LGMT_BASE_URL`/`LGMT_MODEL`
 env vars > `config.yaml` > defaults. The full benchmark costs **6,182 API
 calls** per model (~10⁷ tokens; multiply by your provider's price). To test
 your own premise–conclusion cases, run `lgmt build-mgs --input my_cases.jsonl
---output my_mgs.jsonl` first — no FOL knowledge or ground-truth labels needed.
+--output my_mgs.jsonl` first — no FOL knowledge or ground-truth labels needed;
+`--no-realize` (FOL-skeleton output) and `--mock` run fully offline.
 
 On Windows consoles, `set PYTHONIOENCODING=utf-8` keeps logic symbols
 printing cleanly; if anything else misbehaves, use the Docker option.
@@ -70,12 +72,12 @@ printing cleanly; if anything else misbehaves, use the Docker option.
 
 ```bash
 pip install -e ".[dev]"
-pytest        # 73 passed, 5 skipped (rare-MR applicability skips)
+pytest        # 78 passed, 5 skipped (rare-MR applicability skips)
 ```
 
 MR equivalence (Z3-backed), label canonicalization, mock self-consistency,
-CLI end-to-end, and report rendering. CI runs the same suite on
-Windows/macOS/Linux × Python 3.10–3.13.
+CLI end-to-end, parse-failure handling, and report rendering. CI runs
+the same suite on Windows/macOS/Linux × Python 3.10–3.13.
 
 ## Extending LGMT with a custom MR
 
@@ -83,15 +85,28 @@ Windows/macOS/Linux × Python 3.10–3.13.
 from lgmt.core.structure import MetamorphicRelation, TestCase
 
 class MyMR(MetamorphicRelation):
-    def check_applicability(self, tc: TestCase) -> bool: ...
-    def source_templates(self) -> list[str]: return []
-    def transform(self, tc: TestCase) -> TestCase: ...
+    def __init__(self):
+        self.index = "MR-X1"          # unique id, shown in reports
+        self.name = "My Relation"     # human-readable name
+
+    def check_applicability_logic(self, fol: str) -> bool:
+        ...                            # can a single FOL formula use this MR?
+
+    def source_templates(self) -> list[str]:
+        return []                      # minimal applicable patterns ([] = universal)
+
+    def check_applicability(self, tc: TestCase) -> bool:
+        ...                            # can this test case use this MR?
+
+    def transform(self, tc: TestCase) -> TestCase:
+        ...                            # return the follow-up case (Γ, q) => (Γ', q')
 ```
 
-Implement the three methods and add the class to `lgmt.mrs` — it is picked
-up by `lgmt build-mgs` automatically. The 20 built-in MRs use exactly this
-API, and their equivalence preservation is guarded by
-`tests/test_mr_equivalence.py` (Z3-backed).
+Save the class in any module under `lgmt/mrs/` (e.g.
+`lgmt/mrs/premise/mrx1.py`) — it is discovered and registered
+automatically on the next import, no `__init__.py` edit needed. The 20
+built-in MRs use exactly this API, and their equivalence preservation is
+guarded by `tests/test_mr_equivalence.py` (Z3-backed).
 
 ## Repository layout
 
@@ -99,9 +114,15 @@ API, and their equivalence preservation is guarded by
 lgmt/      the Python package (core / mrs / prompts / models / utils / webapp)
 data/      source test cases and the 3,091-group benchmark (see data/README.md)
 docs/      assets (report screenshot, TikZ architecture figure)
+examples/  multi-model evaluation driver (run_multiple_models.sh)
 tools/     MR regression checker — `python tools/mr_smoke_compare.py`
 tests/     pytest suite
+setup.sh / setup.ps1   one-command setup for Linux/macOS / Windows
 ```
+
+**Web demo** (three tabs: offline demo, test-your-own-model, report
+browser): `pip install -r requirements-web.txt && python -m lgmt.webapp`,
+then open http://localhost:7860.
 
 Full RQ1–RQ4 experiment scripts live in the companion paper's research
 repository, not here.

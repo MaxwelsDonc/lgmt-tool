@@ -82,15 +82,3 @@ class MRE12(MetamorphicTransform):
     # =========================================================================
     def source_templates(self) -> list[str]:
         return ["--A", "-( A & B )", "-( A | B )", "-all x.A", "-exists x.A"]
-
-
-if __name__ == "__main__":
-    # instantiate the MR to test
-    mr = MRE12()
-    
-    # a few classic formulas (incl. unicode)
-    test_cases = [
-        "¬(p ∧ q)",
-        "¬¬(p ∧ q)",
-        "-all x.A"
-    ]
