@@ -116,9 +116,15 @@ class MyMR(MetamorphicRelation):
 
 Save the class in any module under `lgmt/mrs/` (e.g.
 `lgmt/mrs/premise/mrx1.py`) — it is discovered and registered
-automatically on the next import, no `__init__.py` edit needed. The 20
-built-in MRs use exactly this API, and their equivalence preservation is
-guarded by `tests/test_mr_equivalence.py` (Z3-backed).
+automatically on the next import, no `__init__.py` edit needed. Then use
+it like any built-in MR:
+
+```bash
+lgmt build-mgs --input my_cases.jsonl --output my_mgs.jsonl --mr MR-X1 --no-realize
+```
+
+The 20 built-in MRs use exactly this API, and their equivalence
+preservation is guarded by `tests/test_mr_equivalence.py` (Z3-backed).
 
 ## Repository layout
 
