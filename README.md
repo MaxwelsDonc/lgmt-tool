@@ -36,14 +36,13 @@ docker run --rm -v $(pwd)/demo_output:/app/demo_output lgmt   # offline demo; re
 ```
 
 **Option 2 — local install** (requires **Python ≥ 3.10**; no API key needed
-for the offline demo). One command — `bash setup.sh` (Windows:
-`powershell -File .\setup.ps1`) — or the manual steps:
+for the offline demo):
 
 ```bash
 git clone https://github.com/MaxwelsDonc/lgmt-tool.git
 cd lgmt-tool
 python3 -m venv .venv && source .venv/bin/activate   # Windows PowerShell: .venv\Scripts\Activate.ps1
-pip install -e .            # or bash setup.sh --dev to also install test deps
+pip install -e .
 
 lgmt demo            # 40 groups, offline mock model → demo_output/report.html
 lgmt demo --full     # same tour on the full benchmark (overwrites demo_output/)
@@ -129,7 +128,6 @@ docs/      assets (report screenshot, TikZ architecture figure)
 examples/  multi-model evaluation driver (run_multiple_models.sh)
 tools/     MR regression checker — `python tools/mr_smoke_compare.py`
 tests/     pytest suite
-setup.sh, setup.ps1   one-command setup (Linux/macOS, Windows)
 ```
 
 Full RQ1–RQ4 experiment scripts live in the companion paper's research
