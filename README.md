@@ -52,9 +52,10 @@ Open `demo_output/report.html` — the leaderboard above is what you get.
 (On Windows consoles, `set PYTHONIOENCODING=utf-8` keeps logic symbols
 printing cleanly.)
 
-**Option 3 — web demo** (three tabs: offline demo, test-your-own-model,
-report browser): `pip install -r requirements-web.txt && python -m
-lgmt.webapp`, then open http://localhost:7860.
+**Prefer a UI over the CLI?** After installing (Option 1 or 2), launch the
+local web demo — three tabs: offline demo, test-your-own-model, report
+browser: `pip install -r requirements-web.txt && python -m lgmt.webapp`,
+then open http://localhost:7860.
 
 ## Evaluate a real model
 
