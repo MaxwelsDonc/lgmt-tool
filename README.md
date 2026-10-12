@@ -11,10 +11,12 @@ LGMT is the tool companion of *"LGMT: Logic-Grounded Metamorphic Testing for
 Evaluating the Reasoning Reliability of LLMs"* (Knowledge-Based Systems, in
 press). It packages that study's methodology as a reusable tool:
 
-- **20 first-order-logic metamorphic relations** (equivalence-law rewriting
-  of FOL syntax trees — De Morgan, contraposition, quantifier dualities,
-  premise restructuring, symbol renaming; each guarded by Z3-based
-  equivalence tests), with a three-method plugin API for adding your own;
+- **20 first-order-logic metamorphic relations** — equivalence-law rewriting
+  of FOL syntax trees (De Morgan, contraposition, quantifier dualities,
+  premise restructuring, symbol renaming), with a three-method plugin API
+  for adding your own;
+- **Z3-guarded correctness**: every built-in MR's equivalence preservation
+  is verified by SMT-based tests;
 - a **five-command CLI** (`demo` / `build-mgs` / `run` / `report` / `audit`)
   targeting any OpenAI-compatible endpoint — commercial APIs or local
   vLLM/Ollama — plus a local Gradio web demo;
@@ -48,8 +50,16 @@ lgmt demo --full     # same tour on the full benchmark (overwrites demo_output/)
 ```
 
 Open `demo_output/report.html` — the leaderboard above is what you get.
+(On Windows consoles, `set PYTHONIOENCODING=utf-8` keeps logic symbols
+printing cleanly.)
 
-**Evaluate a real model** (any OpenAI-compatible endpoint):
+**Option 3 — web demo** (three tabs: offline demo, test-your-own-model,
+report browser): `pip install -r requirements-web.txt && python -m
+lgmt.webapp`, then open http://localhost:7860.
+
+## Evaluate a real model
+
+Works with any OpenAI-compatible endpoint:
 
 ```bash
 export LGMT_API_KEY=sk-...                                     # and LGMT_BASE_URL if not OpenAI
@@ -58,15 +68,17 @@ lgmt run --mgs data/metamorphic_group/processed_mgs_core/processed_mgs_3091.json
 lgmt report --results results.jsonl --output report.html       # your model joins the leaderboard
 ```
 
-Config precedence: CLI flags > `LGMT_API_KEY`/`LGMT_BASE_URL`/`LGMT_MODEL`
-env vars > `config.yaml` > defaults. The full benchmark costs **6,182 API
-calls** per model (~10⁷ tokens; multiply by your provider's price). To test
-your own premise–conclusion cases, run `lgmt build-mgs --input my_cases.jsonl
---output my_mgs.jsonl` first — no FOL knowledge or ground-truth labels needed;
-`--no-realize` (FOL-skeleton output) and `--mock` run fully offline.
+Config precedence: CLI flags > `LGMT_API_KEY` / `LGMT_BASE_URL` /
+`LGMT_MODEL` env vars > `config.yaml` > defaults.
 
-On Windows consoles, `set PYTHONIOENCODING=utf-8` keeps logic symbols
-printing cleanly; if anything else misbehaves, use the Docker option.
+**Cost transparency.** The full benchmark issues one judgment per source
+and per follow-up case — **6,182 API calls** per model (~10⁷ tokens;
+multiply by your provider's price).
+
+**Your own test cases.** Write premise–conclusion pairs as JSONL and run
+`lgmt build-mgs --input my_cases.jsonl --output my_mgs.jsonl` first — no FOL
+knowledge or ground-truth labels needed; `--no-realize` (FOL-skeleton
+output) and `--mock` run fully offline.
 
 ## Tests
 
@@ -117,12 +129,8 @@ docs/      assets (report screenshot, TikZ architecture figure)
 examples/  multi-model evaluation driver (run_multiple_models.sh)
 tools/     MR regression checker — `python tools/mr_smoke_compare.py`
 tests/     pytest suite
-setup.sh / setup.ps1   one-command setup for Linux/macOS / Windows
+setup.sh, setup.ps1   one-command setup (Linux/macOS, Windows)
 ```
-
-**Web demo** (three tabs: offline demo, test-your-own-model, report
-browser): `pip install -r requirements-web.txt && python -m lgmt.webapp`,
-then open http://localhost:7860.
 
 Full RQ1–RQ4 experiment scripts live in the companion paper's research
 repository, not here.
