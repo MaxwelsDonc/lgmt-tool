@@ -19,6 +19,15 @@ def _load_jsonl(file_path: str) -> List[Dict[str, Any]]:
     return records
 
 
+def load_json_records(file_path: str) -> List[Dict[str, Any]]:
+    """Load raw JSON objects (no TestCase construction) from a JSONL file."""
+    try:
+        return _load_jsonl(file_path)
+    except FileNotFoundError:
+        logger.error(f"File not found - {file_path}")
+        return []
+
+
 def load_test_cases(file_path: str) -> List[TestCase]:
     """Load entailment test cases (``TestCase`` JSONL, one per line)."""
     try:

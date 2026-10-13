@@ -1,0 +1,3 @@
+{"premises_text": ["Every patient who takes the medication recovers within a week.", "Alice takes the medication."], "conclusion_text": "Alice recovers within a week.", "metadata": {"label": "True"}}
+{"premises_text": ["All contracts signed under duress are voidable.", "The Smith contract was signed under duress."], "conclusion_text": "The Smith contract is voidable.", "metadata": {"label": "True"}}
+{"premises_text": ["Some neighbors own electric cars.", "Tom is a neighbor."], "conclusion_text": "Tom owns an electric car.", "metadata": {"label": "Unknown"}}

@@ -75,10 +75,24 @@ Config precedence: CLI flags > `LGMT_API_KEY` / `LGMT_BASE_URL` /
 and per follow-up case — **6,182 API calls** per model (~10⁷ tokens;
 multiply by your provider's price).
 
-**Your own test cases.** Write premise–conclusion pairs as JSONL and run
-`lgmt build-mgs --input my_cases.jsonl --output my_mgs.jsonl` first — no FOL
-knowledge or ground-truth labels needed; `--no-realize` (FOL-skeleton
-output) and `--mock` run fully offline.
+**Your own test cases.** Write premise–conclusion pairs as JSONL — no FOL
+knowledge or ground-truth labels needed. Two input modes:
+
+- **Pure natural language** (recommended): only `premises_text` /
+  `conclusion_text` per record (see
+  [examples/custom_cases.example.jsonl](examples/custom_cases.example.jsonl)
+  for a medical/legal/everyday template). LGMT synthesizes the FOL
+  skeleton automatically with your model before building MGs:
+  ```bash
+  lgmt build-mgs --input examples/custom_cases.example.jsonl \
+                 --output my_mgs.jsonl --model <your-model>
+  ```
+  Translations are validated with NLTK's parser; cases that fail are
+  dropped with a warning. This mode needs a real model (`--mock` cannot
+  translate).
+- **Bring your own FOL**: records with `premises_logic` /
+  `conclusion_logic` are used as-is (no model needed — `--mock` and
+  `--no-realize` run fully offline for these inputs).
 
 ## Tests
 

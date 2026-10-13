@@ -45,10 +45,66 @@ def _resolve_client(args, settings, require_real=False):
 # subcommands
 # --------------------------------------------------------------------- #
 def cmd_build_mgs(args) -> int:
-    from lgmt.core.builder import build_metamorphic_groups, make_realize_fn
-    from lgmt.utils.io import load_test_cases, save_metamorphic_groups
+    from lgmt.core.builder import (
+        build_metamorphic_groups,
+        make_nl2fol_translator,
+        make_realize_fn,
+        synthesize_missing_logic,
+    )
+    from lgmt.core.structure import TestCase
+    from lgmt.utils.io import (
+        load_json_records,
+        save_metamorphic_groups,
+    )
 
-    source_cases = load_test_cases(args.input)
+    # Load raw records first: cases may be pure natural language, in which
+    # case the FOL skeleton is synthesized before TestCase construction.
+    records = load_json_records(args.input)
+    if not records:
+        print(f"Error: no source test cases loaded from {args.input}")
+        return 1
+
+    needs_synthesis = any(
+        not r.get("premises_logic") or not r.get("conclusion_logic") for r in records
+    )
+    synthesis_client = None
+    if needs_synthesis:
+        if args.mock:
+            print(
+                "Error: NL→FOL synthesis requires a real model (the mock cannot "
+                "translate). Provide premises_logic/conclusion_logic fields, or "
+                "drop --mock and configure a model."
+            )
+            return 2
+        settings = resolve_settings(args.config, {"model": args.model})
+        try:
+            synthesis_client, synthesis_model = _resolve_client(
+                args, settings, require_real=True
+            )
+        except SystemExit:
+            print(
+                "Error: NL→FOL synthesis requires a model: set LGMT_API_KEY or "
+                "pass --model; or provide premises_logic/conclusion_logic fields."
+            )
+            return 2
+        translator = make_nl2fol_translator(synthesis_client, synthesis_model)
+        n_before = len(records)
+        records = synthesize_missing_logic(records, translator)
+        print(
+            f"NL→FOL synthesis: {len(records)}/{n_before} cases translated/kept "
+            f"(model '{synthesis_model}')."
+        )
+        if not records:
+            print("Error: no usable source cases remain after NL→FOL synthesis.")
+            return 1
+
+    fields = ("premises_logic", "conclusion_logic", "premises_text",
+              "conclusion_text", "metadata")
+    try:
+        source_cases = [TestCase(**{k: r.get(k) for k in fields}) for r in records]
+    except TypeError as e:
+        print(f"Error: malformed source case: {e}")
+        return 1
     if not source_cases:
         print(f"Error: no source test cases loaded from {args.input}")
         return 1
@@ -60,10 +116,15 @@ def cmd_build_mgs(args) -> int:
 
     realize_fn = None
     if not args.no_realize:
-        settings = resolve_settings(args.config, {"model": args.model})
-        client, model_name = _resolve_client(args, settings, require_real=True)
-        realize_fn = make_realize_fn(client, model_name)
-        print(f"Realization (Logic-to-NL) enabled with model '{model_name}'.")
+        if synthesis_client is not None:
+            realize_client, realize_model = synthesis_client, synthesis_model
+        else:
+            settings = resolve_settings(args.config, {"model": args.model})
+            realize_client, realize_model = _resolve_client(
+                args, settings, require_real=True
+            )
+        realize_fn = make_realize_fn(realize_client, realize_model)
+        print(f"Realization (Logic-to-NL) enabled with model '{realize_model}'.")
     else:
         print("Realization disabled: follow-ups keep tagged FOL-skeleton text.")
 

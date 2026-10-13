@@ -21,11 +21,98 @@ from lgmt.models.base import LLMClient
 from lgmt.mrs import ALL_MRS
 from lgmt.prompts.logic2nl import SYSTEM_PROMPT as LOGIC2NL_SYSTEM_PROMPT
 from lgmt.prompts.logic2nl import get_logic2NL_prompt
+from lgmt.prompts.nl2fol import SYSTEM_PROMPT as NL2FOL_SYSTEM_PROMPT
+from lgmt.prompts.nl2fol import get_nl2fol_prompt
 
 _PREMISE_TAG = re.compile(r"^\[Changed_(\d+)\]\s*")
 _CONCLUSION_TAG = re.compile(r"^\[Changed_conclusion\]\s*")
 
 RealizeFn = Callable[[TestCase, TestCase], TestCase]
+FOLTranslator = Callable[[List[str], str], dict]
+
+
+def make_nl2fol_translator(client: LLMClient, model: str) -> FOLTranslator:
+    """Default NL→FOL translator backed by an LLM (see lgmt.prompts.nl2fol)."""
+
+    def translate(premises_text: List[str], conclusion_text: str) -> dict:
+        prompt = {
+            "system": NL2FOL_SYSTEM_PROMPT,
+            "user": get_nl2fol_prompt(premises_text, conclusion_text),
+        }
+        raw = client.generate(
+            prompt, model=model, context={"task": "nl2fol"}, max_retries=0
+        )
+        if not raw:
+            raise ValueError("empty translation response")
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.strip("`").strip()
+            if text.lower().startswith("json"):
+                text = text[4:].strip()
+        obj = json.loads(repair_json(text))
+        if not isinstance(obj, dict) or "premises_logic" not in obj or "conclusion_logic" not in obj:
+            raise ValueError(f"unexpected translation shape: {obj!r}")
+        return obj
+
+    return translate
+
+
+def synthesize_missing_logic(
+    records: List[dict],
+    translator: FOLTranslator,
+    retries: int = 2,
+) -> List[dict]:
+    """Fill missing FOL fields of raw source-case records via ``translator``.
+
+    Records that already carry non-empty ``premises_logic`` and
+    ``conclusion_logic`` pass through unchanged. For the rest, the
+    translator output is validated with NLTK's LogicParser (one parse per
+    formula, premise counts must match); after ``retries`` failed attempts
+    the case is dropped with a warning.
+    """
+    from nltk.sem.logic import LogicParser
+
+    parser = LogicParser()
+    filled = []
+    for rec in records:
+        if rec.get("premises_logic") and rec.get("conclusion_logic"):
+            filled.append(rec)
+            continue
+        premises_text = rec.get("premises_text") or []
+        conclusion_text = rec.get("conclusion_text") or ""
+        if not premises_text or not conclusion_text:
+            logger.warning(
+                "Case dropped: NL→FOL synthesis needs non-empty "
+                "premises_text/conclusion_text"
+            )
+            continue
+        ok = False
+        last_error: Optional[Exception] = None
+        for attempt in range(retries + 1):
+            try:
+                result = translator(list(premises_text), conclusion_text)
+                new_logic = [str(f) for f in result["premises_logic"]]
+                new_conclusion = str(result["conclusion_logic"])
+                if len(new_logic) != len(premises_text):
+                    raise ValueError(
+                        f"premise count mismatch: {len(new_logic)} formulas "
+                        f"for {len(premises_text)} sentences"
+                    )
+                for formula in new_logic + [new_conclusion]:
+                    parser.parse(formula)
+                filled.append(
+                    {**rec, "premises_logic": new_logic, "conclusion_logic": new_conclusion}
+                )
+                ok = True
+                break
+            except Exception as e:
+                last_error = e
+        if not ok:
+            logger.warning(
+                f"NL→FOL synthesis failed after {retries + 1} attempts "
+                f"(case dropped): {last_error}"
+            )
+    return filled
 
 
 def build_metamorphic_groups(
