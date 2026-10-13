@@ -41,7 +41,7 @@ for the offline demo):
 ```bash
 git clone https://github.com/MaxwelsDonc/lgmt-tool.git
 cd lgmt-tool
-python -m venv .venv && source .venv/bin/activate   # macOS/Linux 无 python 时用 python3；Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m venv .venv && source .venv/bin/activate   # use python3 on macOS/Linux if python is missing; Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -e .
 
 lgmt demo            # 40 groups, offline mock model → demo_output/report.html
