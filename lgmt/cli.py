@@ -19,6 +19,27 @@ from lgmt.mrs import ALL_MRS, get_mr
 
 PROMPTING_CHOICES = sorted(PROMPTING_PRESETS.keys())
 
+_KEY_PROMPT = (
+    "No API key configured. Enter your API key (input hidden), or set "
+    "LGMT_API_KEY to skip this prompt: "
+)
+
+
+def _prompt_for_api_key() -> Optional[str]:
+    """Interactively ask for an API key on a TTY (input hidden).
+
+    Returns the key, or None when not on a TTY or when the user entered
+    nothing. The key is only ever held in memory.
+    """
+    try:
+        if not sys.stdin.isatty():
+            return None
+        import getpass
+
+        return getpass.getpass(_KEY_PROMPT) or None
+    except (OSError, EOFError, KeyboardInterrupt):
+        return None
+
 
 def _resolve_client(args, settings, require_real=False):
     """Return (client, model_name) from --mock or real settings."""
@@ -29,9 +50,13 @@ def _resolve_client(args, settings, require_real=False):
         model_name = f"mock-{mock_persona}"
         return MockLLMClient(persona=mock_persona), model_name
     if require_real and not settings.api_key:
+        typed = _prompt_for_api_key()
+        if typed:
+            settings.api_key = typed  # in memory only, never persisted
+    if require_real and not settings.api_key:
         raise SystemExit(
-            "Error: no API key configured. Use --mock for offline mode, or set "
-            "LGMT_API_KEY / 'model.api_key' in the config file."
+            "Error: no API key configured. Use --mock for offline mode, pass "
+            "--api-key, or set LGMT_API_KEY / 'model.api_key' in the config file."
         )
     client = OpenAICompatClient(
         api_key=settings.api_key,
@@ -76,7 +101,9 @@ def cmd_build_mgs(args) -> int:
                 "drop --mock and configure a model."
             )
             return 2
-        settings = resolve_settings(args.config, {"model": args.model})
+        settings = resolve_settings(
+            args.config, {"model": args.model, "api_key": args.api_key}
+        )
         try:
             synthesis_client, synthesis_model = _resolve_client(
                 args, settings, require_real=True
@@ -119,7 +146,9 @@ def cmd_build_mgs(args) -> int:
         if synthesis_client is not None:
             realize_client, realize_model = synthesis_client, synthesis_model
         else:
-            settings = resolve_settings(args.config, {"model": args.model})
+            settings = resolve_settings(
+                args.config, {"model": args.model, "api_key": args.api_key}
+            )
             realize_client, realize_model = _resolve_client(
                 args, settings, require_real=True
             )
@@ -157,12 +186,13 @@ def cmd_run(args) -> int:
         args.config,
         {
             "model": args.model,
+            "api_key": args.api_key,
             "temperature": args.temperature,
             "max_workers": args.workers,
             "prompting": args.prompting,
         },
     )
-    client, model_name = _resolve_client(args, settings)
+    client, model_name = _resolve_client(args, settings, require_real=True)
     if os.path.exists(args.output) and os.path.getsize(args.output) > 0:
         if args.resume:
             print(f"Resuming: new results append to existing {args.output}")
@@ -244,7 +274,12 @@ def cmd_audit(args) -> int:
         return 1
 
     settings = resolve_settings(
-        args.config, {"model": args.model, "max_workers": args.workers}
+        args.config,
+        {
+            "model": args.model,
+            "api_key": args.api_key,
+            "max_workers": args.workers,
+        },
     )
     client, model_name = _resolve_client(args, settings, require_real=True)
     print(f"Auditing back-translations with model '{model_name}'...")
@@ -372,6 +407,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip LLM Logic-to-NL back-translation (FOL skeleton only).",
     )
     p.add_argument("--model", default=None, help="Model for realization.")
+    p.add_argument("--api-key", default=None, help="API key (overrides env/config).")
     p.add_argument("--mock", choices=["consistent", "flawed"], default=None,
                    help="Use a mock client (offline) for realization.")
     p.add_argument("--workers", type=int, default=1, help="Parallel build workers.")
@@ -384,6 +420,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mgs", required=True, help="Metamorphic group JSONL.")
     p.add_argument("--output", required=True, help="Per-MG result JSONL.")
     p.add_argument("--model", default=None, help="Model name or alias.")
+    p.add_argument("--api-key", default=None, help="API key (overrides env/config).")
     p.add_argument(
         "--prompting", choices=PROMPTING_CHOICES, default=None,
         help="Prompting preset (default from config).",
@@ -434,6 +471,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mgs", required=True, help="Metamorphic group JSONL.")
     p.add_argument("--output", required=True, help="Audit record JSONL.")
     p.add_argument("--model", default=None)
+    p.add_argument("--api-key", default=None, help="API key (overrides env/config).")
     p.add_argument("--workers", type=int, default=None)
     p.add_argument("--mock", choices=["consistent", "flawed"], default=None,
                    help="Offline mock client; all audits pass.")

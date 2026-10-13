@@ -68,8 +68,11 @@ lgmt run --mgs data/metamorphic_group/processed_mgs_core/processed_mgs_3091.json
 lgmt report --results results.jsonl --output report.html       # your model joins the leaderboard
 ```
 
-Config precedence: CLI flags > `LGMT_API_KEY` / `LGMT_BASE_URL` /
-`LGMT_MODEL` env vars > `config.yaml` > defaults.
+Config precedence: `--api-key` / other CLI flags > `LGMT_API_KEY` /
+`LGMT_BASE_URL` / `LGMT_MODEL` env vars > `config.yaml` > defaults. When
+the key is missing everywhere, the CLI prompts for it interactively on a
+terminal (hidden input; the key stays in memory only) — non-interactive
+runs keep the plain error message.
 
 **Cost transparency.** The full benchmark issues one judgment per source
 and per follow-up case — **6,182 API calls** per model (~10⁷ tokens;
