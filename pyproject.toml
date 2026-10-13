@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "lgmt"
 version = "0.1.0"
 description = "Logic-Grounded Metamorphic Testing for evaluating LLM logical reasoning reliability"
-readme = { text = "LGMT: first-order-logic metamorphic testing for LLM logical reasoning.", content-type = "text/plain" }
+readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 classifiers = [
@@ -36,6 +36,11 @@ dev = [
     "pytest>=7.0",
     "z3-solver>=4.12",
 ]
+
+[project.urls]
+Homepage = "https://github.com/MaxwelsDonc/lgmt-tool"
+Repository = "https://github.com/MaxwelsDonc/lgmt-tool"
+"Companion paper" = "https://github.com/MaxwelsDonc/lgmt-tool#citation"
 
 [project.scripts]
 lgmt = "lgmt.cli:main"
