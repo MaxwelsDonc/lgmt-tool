@@ -8,7 +8,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import jsonschema
 from json_repair import repair_json
@@ -303,11 +303,15 @@ def run_inference(
     max_workers: int = 100,
     quiet: bool = False,
     temperature: float = 0.0,
+    progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> str:
     """Run entailment inference over all MGs and write per-MG JSONL.
 
     ``temperature`` is forwarded to the client; reasoning models that
     reject sampling parameters ignore it client-side.
+    ``progress_callback`` (if given) is invoked as
+    ``progress_callback(completed, total)`` once per finished group —
+    success or failure — from the single consumer thread.
     """
     if prompting not in PROMPTING_PRESETS:
         raise ValueError(
@@ -356,9 +360,16 @@ def run_inference(
             iterator = as_completed(futures)
             if not quiet:
                 iterator = tqdm(iterator, total=len(mgs), desc="Inference")
+            completed = 0
             for future in iterator:
-                if future.result():
-                    success_count += 1
+                future.result()
+                completed += 1
+                success_count += 1
+                if progress_callback is not None:
+                    try:
+                        progress_callback(completed, len(mgs))
+                    except Exception:
+                        pass  # a misbehaving callback must not kill the run
     finally:
         # drop the file sink so repeated calls (e.g. the web app) do not
         # accumulate handlers

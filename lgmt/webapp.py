@@ -16,6 +16,7 @@ import html
 import json
 import os
 import tempfile
+import threading
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -70,18 +71,6 @@ EXAMPLE_FOL_JSONL = """\
 {"premises_logic": ["all x.(Manager(x) -> Office(x))", "Office(alice)"], "conclusion_logic": "Manager(alice)", "premises_text": ["All managers have a private office.", "Alice has a private office."], "conclusion_text": "Alice is a manager.", "metadata": {"label": "Unknown"}}
 """
 
-EXAMPLE_UNSTRUCTURED_EN = """\
-Every patient who takes the prescribed antiviral medication recovers within a week. Alice is a patient who takes the prescribed antiviral medication. Therefore, does Alice recover within a week?
-
-All contracts signed under duress are legally voidable. The Smith commercial lease is a contract signed under duress. Conclusion: The Smith commercial lease is legally voidable.\
-"""
-
-EXAMPLE_UNSTRUCTURED_ZH = """\
-根据医疗指南，所有按时服用该抗病毒药物的患者都会在一周内康复。张伟是一名患者并且按时服用了该抗病毒药物。请问：张伟会在一周内康复吗？
-
-所有在胁迫下签署的商业合同都是可撤销的。甲乙双方的采购协议是在胁迫下签署的商业合同。因此，甲乙双方的采购协议是可撤销的。\
-"""
-
 EXAMPLE_NL_JSONL = EXAMPLE_NL_EN_JSONL
 EXAMPLE_JSONL = EXAMPLE_FOL_JSONL
 
@@ -92,6 +81,67 @@ LAST_RUN: Dict[str, Any] = {}
 #: Benchmark run history per (dataset, prompting): aggregates only, capped.
 _BENCH_HISTORY_MAX = 5
 _BENCH_HISTORY: Dict[tuple, "deque"] = {}
+
+#: Live run progress per tab key: {"completed", "total", "failed", "done"}.
+PROGRESS: Dict[str, Dict[str, Any]] = {}
+_PROGRESS_LOCK = threading.Lock()
+
+
+def _begin_progress(tab_key: str, total: int, results_path: str) -> None:
+    with _PROGRESS_LOCK:
+        PROGRESS[tab_key] = {
+            "completed": 0,
+            "total": total,
+            "failed": 0,
+            "done": False,
+            "results_path": results_path,
+        }
+
+
+def _progress_callback(tab_key: str):
+    """Build a run_inference progress_callback updating PROGRESS[tab_key]."""
+
+    def update(completed: int, total: int) -> None:
+        with _PROGRESS_LOCK:
+            entry = PROGRESS.get(tab_key)
+            if entry is None:
+                return
+            entry["completed"] = completed
+            entry["total"] = total
+
+    return update
+
+
+def _finish_progress(tab_key: str, failed: int) -> None:
+    with _PROGRESS_LOCK:
+        entry = PROGRESS.get(tab_key)
+        if entry is not None:
+            entry["failed"] = failed
+            entry["done"] = True
+
+
+def _read_progress(tab_key: str) -> Dict[str, Any]:
+    """Snapshot of a tab's progress; failed count is read from the results
+    file so failures show up live without extra plumbing."""
+    with _PROGRESS_LOCK:
+        entry = PROGRESS.get(tab_key)
+        if entry is None:
+            return {"completed": 0, "total": 0, "failed": 0, "done": False}
+        snapshot = dict(entry)
+    path = snapshot.pop("results_path", None)
+    if path and os.path.exists(path):
+        failed = 0
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if '"is_valid": false' in line or '"is_valid":False' in line:
+                        failed += 1
+        except OSError:
+            failed = snapshot.get("failed", 0)
+        snapshot["failed"] = failed
+        if not snapshot["done"]:
+            snapshot["completed"] = max(snapshot["completed"], failed)
+    return snapshot
 
 
 # --------------------------------------------------------------------- #
@@ -228,16 +278,22 @@ def execute_demo_workflow(
     report_path = os.path.join(out_dir, "report.html")
 
     model_name = f"mock-{persona}"
-    run_inference(
-        mgs,
-        MockLLMClient(persona=persona),
-        model_name,
-        prompting=prompting,
-        result_save_path=results_path,
-        max_workers=8,
-        quiet=True,
-    )
+    _begin_progress("demo", len(mgs), results_path)
+    try:
+        run_inference(
+            mgs,
+            MockLLMClient(persona=persona),
+            model_name,
+            prompting=prompting,
+            result_save_path=results_path,
+            max_workers=8,
+            quiet=True,
+            progress_callback=_progress_callback("demo"),
+        )
+    finally:
+        _finish_progress("demo", 0)
     records = load_inference_records(results_path)
+    _finish_progress("demo", compute_metrics(records).get("failed", 0))
     metrics = compute_metrics(records)
     generate_run_report(
         records,
@@ -298,16 +354,23 @@ def execute_benchmark_workflow(
 
     client = OpenAICompatClient(api_key=api_key.strip(), base_url=base_url)
     model_name = model.strip()
-    run_inference(
-        mgs,
-        client,
-        model_name,
-        prompting=prompting,
-        result_save_path=results_path,
-        max_workers=max(1, min(64, int(workers or 16))),
-        quiet=True,
-    )
+    _begin_progress("benchmark", len(mgs), results_path)
+    try:
+        run_inference(
+            mgs,
+            client,
+            model_name,
+            prompting=prompting,
+            result_save_path=results_path,
+            max_workers=max(1, min(64, int(workers or 32))),
+            quiet=True,
+            progress_callback=_progress_callback("benchmark"),
+        )
+    finally:
+        _finish_progress("benchmark", 0)
     records = load_inference_records(results_path)
+    _bench_failed = compute_metrics(records).get("failed", 0)
+    _finish_progress("benchmark", _bench_failed)
     metrics = compute_metrics(records)
 
     # Keep a small in-memory history per (dataset, prompting) so repeated
@@ -424,17 +487,23 @@ def execute_custom_workflow(
 
     if prompting not in PROMPTING_PRESETS:
         prompting = "zero_cot"
-    run_inference(
-        mgs,
-        client,
-        model_name,
-        prompting=prompting,
-        result_save_path=results_path,
-        max_workers=8,
-        quiet=True,
-    )
+    _begin_progress("custom", len(mgs), results_path)
+    try:
+        run_inference(
+            mgs,
+            client,
+            model_name,
+            prompting=prompting,
+            result_save_path=results_path,
+            max_workers=8,
+            quiet=True,
+            progress_callback=_progress_callback("custom"),
+        )
+    finally:
+        _finish_progress("custom", 0)
     records = load_inference_records(results_path)
     metrics = compute_metrics(records)
+    _finish_progress("custom", metrics.get("failed", 0))
     generate_run_report(
         records,
         metrics,
@@ -621,6 +690,14 @@ _STUDIO_CSS = """
     .queue-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 8px; background: #f8fafc; border-radius: 6px; font-size: 12px; color: #1e293b; margin-bottom: 4px; border-left: 3px solid #3a6ea5; }
     .queue-item button { border: none; background: none; color: #b91c1c; cursor: pointer; font-size: 11.5px; font-weight: 600; }
 
+    /* run progress */
+    .run-progress { display: none; margin-top: 12px; align-items: center; gap: 12px; }
+    .run-progress.active { display: flex; }
+    .rp-track { flex: 1; height: 10px; background: #e8edf3; border-radius: 6px; overflow: hidden; }
+    .rp-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #3a6ea5, #6f9fd0); border-radius: 6px; transition: width 0.4s ease; }
+    .rp-text { font-size: 12.5px; color: #475569; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .rp-text b { color: #17273f; }
+
     /* status bar & empty state */
     .status-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; background: #eaf1f9; border: 1px solid #c5d9ed; color: #17273f; padding: 10px 16px; border-radius: 10px; margin-bottom: 18px; font-size: 13.5px; font-weight: 500; }
     .status-bar.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
@@ -637,7 +714,6 @@ var PRESETS = {};
 try { PRESETS = JSON.parse(document.getElementById('lgmt-presets').textContent); } catch (e) { PRESETS = {}; }
 
 var activeTab = 1;
-var activeCustomMode = 'form';
 
 function emptyCardHtml(title, desc){
   return '<div class="empty-state"><h3>' + title + '</h3><p>' + desc + '</p></div>';
@@ -669,7 +745,7 @@ var TAB_STATE = {
     tabKey: 'custom',
     hasRun: false,
     isError: false,
-    summary: 'Ready — provide your custom cases above (Form, Unstructured Text, or JSONL) and click Build MGs & Test Model.',
+    summary: 'Ready — type premises and a conclusion above (or open Advanced for batch JSONL) and click Build MGs & Test Model.',
     html: emptyCardHtml(
       'No Custom Cases Evaluated Yet',
       'Enter your own domain premises and conclusions in Workflow 3 above and click <b>Build MGs &amp; Test Model</b>. Results for your custom cases will appear strictly in this tab.'
@@ -715,14 +791,6 @@ var formQueue = [
     metadata: {label: "True"}
   }
 ];
-
-function switchCustomMode(mode){
-  activeCustomMode = mode;
-  ['form', 'unstructured', 'jsonl'].forEach(function(m){
-    document.getElementById('sub-btn-' + m).classList.toggle('active', m === mode);
-    document.getElementById('sub-pane-' + m).classList.toggle('active', m === mode);
-  });
-}
 
 function renderFormQueue(){
   var listEl = document.getElementById('qf-queue-list');
@@ -799,12 +867,6 @@ function fillQuickForm(kind){
   if (c) { formQueue = [c]; renderFormQueue(); }
 }
 
-function loadUnstructuredPreset(lang){
-  document.getElementById('c-unstructured').value = (lang === 'zh') ? PRESETS.unstructured_zh : PRESETS.unstructured_en;
-  document.getElementById('c-exec-mode').value = 'api';
-  toggleCustomExecMode();
-}
-
 function loadJsonlPreset(key){
   document.getElementById('c-cases').value = PRESETS[key] || PRESETS.dual_fol;
   if (key === 'nl_en' || key === 'nl_zh') {
@@ -830,6 +892,46 @@ function toggleCustomExecMode(){
   document.getElementById('c-realize-wrap').style.opacity = isMock ? '0.45' : '1';
 }
 
+// ---------------- Run Progress (1s polling of /api/progress) ----------------
+var progressTimers = {};
+
+function startProgress(tabIdx, tabKey){
+  stopProgress(tabIdx);
+  var host = document.getElementById('progress-' + tabIdx);
+  if (!host) return;
+  host.classList.add('active');
+  updateProgressView(tabIdx, {completed: 0, total: 0, failed: 0, done: false});
+  progressTimers[tabIdx] = setInterval(function(){
+    fetch('/api/progress?tab=' + tabKey)
+      .then(function(r){ return r.json(); })
+      .then(function(d){ updateProgressView(tabIdx, d); })
+      .catch(function(){ /* transient poll failure: keep trying */ });
+  }, 1000);
+}
+
+function stopProgress(tabIdx){
+  if (progressTimers[tabIdx]) {
+    clearInterval(progressTimers[tabIdx]);
+    delete progressTimers[tabIdx];
+  }
+  var host = document.getElementById('progress-' + tabIdx);
+  if (host) host.classList.remove('active');
+}
+
+function updateProgressView(tabIdx, d){
+  var fill = document.getElementById('rp-fill-' + tabIdx);
+  var text = document.getElementById('rp-text-' + tabIdx);
+  if (!fill || !text) return;
+  var total = d.total || 0;
+  var completed = d.completed || 0;
+  var pct = total ? Math.round(completed / total * 100) : 0;
+  fill.style.width = pct + '%';
+  text.innerHTML = total
+    ? '<b>' + completed + '</b>/' + total + ' (' + pct + '%)' +
+      (d.failed ? ' · <span style="color:#b91c1c;">' + d.failed + ' failed</span>' : '')
+    : 'Preparing run…';
+}
+
 // ---------------- API Dispatch (Strictly Scoped to Tab) ----------------
 function postTabApi(tabIdx, url, payload, btnId){
   var btn = document.getElementById(btnId);
@@ -839,6 +941,7 @@ function postTabApi(tabIdx, url, payload, btnId){
   TAB_STATE[tabIdx].isError = false;
   TAB_STATE[tabIdx].summary = 'Running pipeline… please wait.';
   if (activeTab === tabIdx) renderActiveTabState();
+  startProgress(tabIdx, TAB_STATE[tabIdx].tabKey);
 
   fetch(url, {
     method: 'POST',
@@ -847,6 +950,7 @@ function postTabApi(tabIdx, url, payload, btnId){
   })
   .then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
   .then(function(res){
+    stopProgress(tabIdx);
     btn.disabled = false;
     btn.textContent = oldLabel;
     if (!res.ok || res.data.error) {
@@ -862,6 +966,7 @@ function postTabApi(tabIdx, url, payload, btnId){
     if (activeTab === tabIdx) renderActiveTabState();
   })
   .catch(function(err){
+    stopProgress(tabIdx);
     btn.disabled = false;
     btn.textContent = oldLabel;
     TAB_STATE[tabIdx].isError = true;
@@ -885,7 +990,7 @@ function runBenchmark(){
     model: document.getElementById('b-model').value,
     dataset: document.getElementById('b-dataset').value,
     prompting: document.getElementById('b-prompting').value,
-    workers: parseInt(document.getElementById('b-workers').value || '16', 10)
+    workers: parseInt(document.getElementById('b-workers').value || '32', 10)
   }, 'btn-run-bench');
 }
 
@@ -895,8 +1000,12 @@ function runCustom(){
   var isMock = document.getElementById('c-exec-mode').value === 'mock';
   var payloadText = '';
   var inputMode = 'jsonl';
+  var advanced = (document.getElementById('c-cases').value || '').trim();
 
-  if (activeCustomMode === 'form') {
+  if (advanced) {
+    // Advanced batch JSONL (non-empty box takes precedence over the form)
+    payloadText = advanced;
+  } else {
     var items = formQueue.slice();
     var current = readCurrentFormCase();
     if (!items.length && current) {
@@ -908,18 +1017,11 @@ function runCustom(){
     }
     if (!items.length) {
       TAB_STATE[3].isError = true;
-      TAB_STATE[3].summary = 'Please enter premises and a conclusion in the Quick Form.';
+      TAB_STATE[3].summary = 'Please enter premises and a conclusion (or paste batch JSONL in Advanced).';
       renderActiveTabState();
       return;
     }
     payloadText = items.map(function(x){ return JSON.stringify(x); }).join('\n');
-    inputMode = 'jsonl';
-  } else if (activeCustomMode === 'unstructured') {
-    payloadText = document.getElementById('c-unstructured').value || '';
-    inputMode = 'unstructured';
-  } else {
-    payloadText = document.getElementById('c-cases').value || '';
-    inputMode = 'jsonl';
   }
 
   postTabApi(3, '/api/custom', {
@@ -949,8 +1051,6 @@ def _render_studio_page() -> str:
             "nl_zh": EXAMPLE_NL_ZH_JSONL,
             "pure_fol": EXAMPLE_PURE_FOL_JSONL,
             "dual_fol": EXAMPLE_FOL_JSONL,
-            "unstructured_en": EXAMPLE_UNSTRUCTURED_EN,
-            "unstructured_zh": EXAMPLE_UNSTRUCTURED_ZH,
         },
         ensure_ascii=False,
     ).replace("</", "<\\/")
@@ -1025,6 +1125,10 @@ def _render_studio_page() -> str:
                 <button class="btn-primary" id="btn-run-demo" onclick="runDemo()">Run Offline Demo</button>
                 <span style="font-size:12.5px;color:#6b7280;">CLI equivalent: <code>lgmt demo</code> or <code>lgmt demo --full</code></span>
             </div>
+            <div class="run-progress" id="progress-1">
+                <div class="rp-track"><div class="rp-fill" id="rp-fill-1"></div></div>
+                <span class="rp-text" id="rp-text-1"></span>
+            </div>
         </section>
 
         <!-- ==================== Workflow 2: Benchmark Your Model ==================== -->
@@ -1063,105 +1167,92 @@ def _render_studio_page() -> str:
                 </div>
                 <div class="wf-field">
                     <label>Workers</label>
-                    <input type="number" id="b-workers" value="16" min="1" max="64">
+                    <input type="number" id="b-workers" value="32" min="1" max="64">
                 </div>
             </div>
             <div class="wf-actions">
                 <button class="btn-primary" id="btn-run-bench" onclick="runBenchmark()">Run Benchmark Evaluation</button>
                 <span style="font-size:12.5px;color:#6b7280;">CLI equivalent: <code>lgmt run --mgs benchmark --model &lt;name&gt; --output results.jsonl</code></span>
             </div>
+            <div class="run-progress" id="progress-2">
+                <div class="rp-track"><div class="rp-fill" id="rp-fill-2"></div></div>
+                <span class="rp-text" id="rp-text-2"></span>
+            </div>
         </section>
 
         <!-- ==================== Workflow 3: Test Custom Cases ==================== -->
         <section class="wf-panel" id="wf-panel-3">
             <div class="wf-guide">
-                <b>Workflow 3 · Test Your Own Domain Cases:</b> Choose how you want to provide your cases below — <b>Quick Form</b> (no JSON needed), <b>Unstructured Paragraph</b> (auto-extracted), or <b>Batch JSONL / File Upload</b>. Supports English, Chinese (中文), Pure FOL formulas, and Dual NL+FOL.
+                <b>Workflow 3 · Test Your Own Domain Cases:</b> One test case = a few premise lines + one conclusion. English, 中文, or FOL are all accepted — no formulas and no gold labels needed: the LLM synthesizes the logic automatically and LGMT generates equivalent variants for testing. Use the form below, or open <b>Advanced: batch JSONL</b> for bulk input.
             </div>
 
-            <div class="sub-tabs">
-                <button type="button" class="sub-tab active" id="sub-btn-form" onclick="switchCustomMode('form')">
-                    📝 Mode A: Quick Form (Interactive)
-                </button>
-                <button type="button" class="sub-tab" id="sub-btn-unstructured" onclick="switchCustomMode('unstructured')">
-                    💬 Mode B: Unstructured Paragraph (Auto-Split)
-                </button>
-                <button type="button" class="sub-tab" id="sub-btn-jsonl" onclick="switchCustomMode('jsonl')">
-                    📄 Mode C: Batch JSONL / File Upload
-                </button>
+            <div class="wf-guide" style="border-left-color:#1f9d55;">
+                <b>One test case = a few premise lines + one conclusion.</b><br>
+                Premises (one per line) plus a single conclusion — in English, 中文, or FOL syntax.
+                No FOL knowledge and no gold labels needed: the LLM translates the sentences into
+                logic automatically, and LGMT rewrites them into provably equivalent variants.
             </div>
 
-            <div class="sub-pane active" id="sub-pane-form">
-                <div class="sub-hint">
-                    <span>Type premises (one per line) and a conclusion in <b>English, 中文, or FOL syntax</b> — no JSON formatting needed.</span>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                        <button type="button" class="btn-secondary" onclick="fillQuickForm('en')">Example: English NL</button>
-                        <button type="button" class="btn-secondary" onclick="fillQuickForm('zh')">Example: 中文自然语言</button>
-                        <button type="button" class="btn-secondary" onclick="fillQuickForm('fol')">Example: Pure FOL (Offline-ready)</button>
-                    </div>
+            <div class="sub-hint">
+                <span>Type below, optionally queue several cases as a batch, then click <b>Build MGs &amp; Test Model</b>.</span>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <button type="button" class="btn-secondary" onclick="fillQuickForm('en')">Example: English NL</button>
+                    <button type="button" class="btn-secondary" onclick="fillQuickForm('zh')">Example: 中文自然语言</button>
+                    <button type="button" class="btn-secondary" onclick="fillQuickForm('fol')">Example: Pure FOL (Offline-ready)</button>
                 </div>
-                <div class="form-split">
-                    <div class="wf-field">
-                        <label>Premises (One sentence or FOL formula per line)</label>
-                        <textarea id="qf-premises" rows="3" placeholder="All birds can fly.&#10;Tweety is a bird.">all x.(Man(x) -> Mortal(x))
+            </div>
+            <div class="form-split">
+                <div class="wf-field">
+                    <label>Premises (one sentence or FOL formula per line)</label>
+                    <textarea id="qf-premises" rows="3" placeholder="All birds can fly.&#10;Tweety is a bird.">all x.(Man(x) -> Mortal(x))
 Man(socrates)</textarea>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    <div class="wf-field">
+                        <label>Conclusion (single statement or FOL formula)</label>
+                        <input type="text" id="qf-conclusion" value="Mortal(socrates)" placeholder="Tweety can fly.">
                     </div>
-                    <div style="display:flex;flex-direction:column;gap:8px;">
-                        <div class="wf-field">
-                            <label>Conclusion (Single statement or FOL formula)</label>
-                            <input type="text" id="qf-conclusion" value="Mortal(socrates)" placeholder="Tweety can fly.">
+                    <div style="display:flex;gap:8px;align-items:end;">
+                        <div class="wf-field" style="flex:1;">
+                            <label>Expected Label (Optional)</label>
+                            <select id="qf-label">
+                                <option value="True" selected>True (Entailed)</option>
+                                <option value="False">False (Contradicted)</option>
+                                <option value="Unknown">Unknown / Unlabeled (Consistency check only)</option>
+                            </select>
                         </div>
-                        <div style="display:flex;gap:8px;align-items:end;">
-                            <div class="wf-field" style="flex:1;">
-                                <label>Expected Label (Optional)</label>
-                                <select id="qf-label">
-                                    <option value="True" selected>True (Entailed)</option>
-                                    <option value="False">False (Contradicted)</option>
-                                    <option value="Unknown">Unknown / Unlabeled (Consistency check only)</option>
-                                </select>
-                            </div>
-                            <button type="button" class="btn-secondary" style="height:36px;padding:0 14px;" onclick="addFormCaseToQueue()">+ Add to Batch</button>
-                        </div>
+                        <button type="button" class="btn-secondary" style="height:36px;padding:0 14px;" onclick="addFormCaseToQueue()">+ Add to Batch</button>
                     </div>
                 </div>
-                <div class="queue-box">
-                    <div class="queue-header">
-                        <span id="qf-queue-title">Batch Queue (1 case ready — or edit the fields above and click Run directly)</span>
-                        <button type="button" class="btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="clearFormQueue()">Clear Batch</button>
-                    </div>
-                    <div id="qf-queue-list"></div>
+            </div>
+            <div class="queue-box">
+                <div class="queue-header">
+                    <span id="qf-queue-title">Batch Queue (1 case ready — or edit the fields above and click Run directly)</span>
+                    <button type="button" class="btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="clearFormQueue()">Clear Batch</button>
                 </div>
+                <div id="qf-queue-list"></div>
             </div>
 
-            <div class="sub-pane" id="sub-pane-unstructured">
-                <div class="sub-hint">
-                    <span>Paste one or more unstructured reasoning paragraphs (separated by a blank line). LGMT will automatically extract the premises and conclusion and synthesize FOL.</span>
-                    <div style="display:flex;gap:6px;">
-                        <button type="button" class="btn-secondary" onclick="loadUnstructuredPreset('en')">Load English Paragraphs</button>
-                        <button type="button" class="btn-secondary" onclick="loadUnstructuredPreset('zh')">Load 中文业务段落</button>
+            <details style="margin-top:14px;">
+                <summary style="cursor:pointer;font-size:13px;font-weight:650;color:#334155;">Advanced: batch JSONL (bulk input / file upload)</summary>
+                <div style="margin-top:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;">
+                    <div class="sub-hint">
+                        <span>Paste JSON objects (one per line) or upload a <code>.jsonl</code> file. Each line: <code>{{"premises_text": ["..."], "conclusion_text": "..."}}</code> — or provide <code>premises_logic</code> / <code>conclusion_logic</code> directly. If this box is non-empty it takes precedence over the form above.</span>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                            <label class="btn-secondary" style="cursor:pointer;margin:0;">
+                                📂 Upload .jsonl File <input type="file" accept=".jsonl,.json,.txt" style="display:none;" onchange="handleFileUpload(this)">
+                            </label>
+                            <button type="button" class="btn-secondary" onclick="loadJsonlPreset('nl_en')">English NL</button>
+                            <button type="button" class="btn-secondary" onclick="loadJsonlPreset('nl_zh')">中文 NL</button>
+                            <button type="button" class="btn-secondary" onclick="loadJsonlPreset('pure_fol')">Pure FOL</button>
+                            <button type="button" class="btn-secondary" onclick="loadJsonlPreset('dual_fol')">Dual NL+FOL</button>
+                        </div>
+                    </div>
+                    <div class="wf-field">
+                        <textarea id="c-cases" rows="5" placeholder='{{"premises_text": ["..."], "conclusion_text": "..."}}'></textarea>
                     </div>
                 </div>
-                <div class="wf-field">
-                    <textarea id="c-unstructured" rows="6">{html.escape(EXAMPLE_UNSTRUCTURED_EN)}</textarea>
-                </div>
-            </div>
-
-            <div class="sub-pane" id="sub-pane-jsonl">
-                <div class="sub-hint">
-                    <span>Upload a <code>.jsonl</code> file or paste JSON objects (one per line). Supports Pure NL (English/中文), Pure FOL, or Dual NL+FOL.</span>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-                        <label class="btn-secondary" style="cursor:pointer;margin:0;">
-                            📂 Upload .jsonl File <input type="file" accept=".jsonl,.json,.txt" style="display:none;" onchange="handleFileUpload(this)">
-                        </label>
-                        <button type="button" class="btn-secondary" onclick="loadJsonlPreset('nl_en')">English NL</button>
-                        <button type="button" class="btn-secondary" onclick="loadJsonlPreset('nl_zh')">中文 NL</button>
-                        <button type="button" class="btn-secondary" onclick="loadJsonlPreset('pure_fol')">Pure FOL</button>
-                        <button type="button" class="btn-secondary" onclick="loadJsonlPreset('dual_fol')">Dual NL+FOL</button>
-                    </div>
-                </div>
-                <div class="wf-field">
-                    <textarea id="c-cases" rows="5">{html.escape(EXAMPLE_FOL_JSONL)}</textarea>
-                </div>
-            </div>
+            </details>
 
             <div class="wf-grid" style="margin-top:14px;">
                 <div class="wf-field">
@@ -1206,6 +1297,10 @@ Man(socrates)</textarea>
             <div class="wf-actions">
                 <button class="btn-primary" id="btn-run-custom" onclick="runCustom()">Build MGs &amp; Test Model</button>
                 <span style="font-size:12.5px;color:#6b7280;">CLI equivalent: <code>lgmt build-mgs --input my_cases.jsonl --output my_mgs.jsonl</code> → <code>lgmt run</code></span>
+            </div>
+            <div class="run-progress" id="progress-3">
+                <div class="rp-track"><div class="rp-fill" id="rp-fill-3"></div></div>
+                <span class="rp-text" id="rp-text-3"></span>
             </div>
         </section>
 
@@ -1259,6 +1354,11 @@ class _StudioHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in ("/", "/index.html"):
             self._send_html(_render_studio_page())
+            return
+        if parsed.path == "/api/progress":
+            qs = parse_qs(parsed.query)
+            tab_key = (qs.get("tab") or [""])[0]
+            self._send_json(_read_progress(tab_key))
             return
         if parsed.path == "/api/download-report":
             qs = parse_qs(parsed.query)

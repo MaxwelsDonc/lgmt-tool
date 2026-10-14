@@ -14,7 +14,8 @@ class _StubClient:
 
 
 def _fake_run_inference(mgs, client, model_name, prompting="zero_cot",
-                        result_save_path="", max_workers=1, quiet=True):
+                        result_save_path="", max_workers=1, quiet=True,
+                        progress_callback=None):
     """Writes plausible results without any network."""
     labels = {"model-a": "True", "model-b": "False"}
     label = labels.get(model_name, "True")
