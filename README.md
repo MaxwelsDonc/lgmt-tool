@@ -105,7 +105,7 @@ lgmt report --results results.jsonl --output report.html       # your model join
 ## Workflow 3: Test your own domain cases
 
 One test case = a few premise lines + one conclusion — **no FOL knowledge
-and no ground-truth labels needed**. Paste plain English / 中文 sentences,
+and no ground-truth labels needed**. Paste plain English or Chinese sentences,
 FOL formulas, or JSONL into the Web Studio's single smart input (or pass a
 `.jsonl` file on the CLI); the backend sniffs the format, the LLM
 synthesizes the logic, and NLTK's parser validates every formula:
