@@ -22,6 +22,40 @@ jobs:
       - name: Run test suite
         run: pytest
 
+  # The remaining items of docs/VERIFICATION.md that unit tests + readme-smoke
+  # do not already cover: the MR red-line tool itself, the Web Studio server,
+  # the multi-model driver script, demo --full, and the documentation gates.
+  verify-checklist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package only (no dev extras)
+        run: pip install -e .
+      - name: MR red line — smoke compare tool itself
+        run: python tools/mr_smoke_compare.py
+      - name: MR registry shape (20, MR-S1 first, MR-E2.4 last)
+        run: python -c "from lgmt.mrs import ALL_MRS; assert len(ALL_MRS) == 20, len(ALL_MRS); assert ALL_MRS[0].index == 'MR-S1' and ALL_MRS[-1].index == 'MR-E2.4'"
+      - name: Web Studio serves without gradio
+        run: |
+          lgmt web --port 8765 &
+          sleep 5
+          curl -fsS http://localhost:8765/ > /dev/null
+          kill %1
+        shell: bash
+      - name: Multi-model driver script (offline mock)
+        run: LGMT_MOCK=flawed BENCH=lgmt/demo/demo_mgs.jsonl bash examples/run_multiple_models.sh ci-a ci-b
+      - name: demo --full (3,091-group benchmark)
+        run: lgmt demo --full
+      - name: Gate — no TODO/FIXME/<org> placeholders
+        run: "! grep -rn 'TODO\\|FIXME\\|<org>' --include='*.py' --include='*.md' ."
+      - name: Gate — English-only docs and package
+        run: "! grep -rP '[\\x{4e00}-\\x{9fff}]' README.md DEPLOY.md docs/ lgmt/"
+      - name: Gate — brand spelling (Logic-Grounded)
+        run: "! grep -rn 'Logic-Guided' ."
+
   docker-build:
     runs-on: ubuntu-latest
     steps:
