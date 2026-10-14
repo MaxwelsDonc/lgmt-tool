@@ -104,24 +104,21 @@ lgmt report --results results.jsonl --output report.html       # your model join
 
 ## Workflow 3: Test your own domain cases
 
-Write premise–conclusion pairs as JSONL — **no ground-truth labels needed**.
-Two input modes are supported:
+One test case = a few premise lines + one conclusion — **no FOL knowledge
+and no ground-truth labels needed**. Paste plain English / 中文 sentences,
+FOL formulas, or JSONL into the Web Studio's single smart input (or pass a
+`.jsonl` file on the CLI); the backend sniffs the format, the LLM
+synthesizes the logic, and NLTK's parser validates every formula:
 
-- **Pure natural language (recommended):** provide only `premises_text` and
-  `conclusion_text` per record (see
-  [examples/custom_cases.example.jsonl](examples/custom_cases.example.jsonl)
-  for a medical/legal/everyday template). LGMT synthesizes the FOL skeleton
-  automatically with your model and validates every formula with NLTK's
-  logic parser before applying MRs:
-  ```bash
-  lgmt build-mgs --input examples/custom_cases.example.jsonl \
-                 --output my_mgs.jsonl --model <your-model>
-  lgmt run --mgs my_mgs.jsonl --model <your-model> --output my_results.jsonl
-  lgmt report --results my_results.jsonl --output my_report.html
-  ```
-- **Bring your own FOL:** records that already include `premises_logic` and
-  `conclusion_logic` are used as-is (`--mock` and `--no-realize` run fully
-  offline for these inputs).
+```bash
+lgmt build-mgs --input examples/custom_cases.example.jsonl \
+               --output my_mgs.jsonl --model <your-model>
+lgmt run --mgs my_mgs.jsonl --model <your-model> --output my_results.jsonl
+lgmt report --results my_results.jsonl --output my_report.html
+```
+
+Records that already include `premises_logic` / `conclusion_logic` are
+used as-is (`--mock` and `--no-realize` run fully offline for those).
 
 To audit back-translation fidelity on generated MGs with an independent
 judge model:
@@ -161,14 +158,26 @@ class MyMR(MetamorphicRelation):
         ...                            # return the follow-up case (Γ, q) => (Γ', q')
 ```
 
-Save the class in any module under `lgmt/mrs/` (e.g.
-`lgmt/mrs/premise/mrx1.py`) — it is discovered and registered
-automatically on the next import, with no `__init__.py` edit needed:
+Every custom MR is **verified for logical equivalence with Z3 before it
+can run** (five standard FOL samples; the check is skipped only via
+`--no-verify`). Three ways to register:
 
-```bash
-lgmt list-mrs
-lgmt build-mgs --input my_cases.jsonl --output my_mgs.jsonl --mr MR-X1 --no-realize
-```
+- **Web Studio drawer:** in Workflow 3 click `➕ Register Custom MR`, edit
+  the pre-filled template (the paper's Listing 1), and press
+  `Verify with Z3 & Register` — a green bar confirms
+  `Z3 Equivalence Verified (5/5)` and the MR joins the category row.
+  *(Executes Python locally — only paste code you trust.)*
+- **CLI file loading:** save the class in a `.py` file and pass it to any
+  MR-consuming command:
+  ```bash
+  lgmt list-mrs --mr-file examples/custom_mr_example.py
+  lgmt build-mgs --input my_cases.jsonl --output my_mgs.jsonl \
+                 --mr-file my_mr.py --mr MR-X1 --no-realize
+  ```
+  ([examples/custom_mr_example.py](examples/custom_mr_example.py) is the
+  runnable Listing 1 reference.)
+- **Package drop-in:** save the class in any module under `lgmt/mrs/` — it
+  is discovered and registered automatically on the next import.
 
 The 20 built-in MRs use this exact API, and their equivalence preservation
 is guarded by `tests/test_mr_equivalence.py` (Z3-backed).

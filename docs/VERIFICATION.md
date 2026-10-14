@@ -130,7 +130,7 @@ Simulate a client that always fails parsing (or inspect `tests/test_parse_failur
 pip install -e ".[dev]" && pytest
 ```
 
-- **PASS:** **99 passed, 5 skipped** (the 5 skips are rare-MR applicability
+- **PASS:** **125 passed, 5 skipped** (the 5 skips are rare-MR applicability
   scans, expected). If the count changes, find out which tests were added or
   lost and why.
 - GitHub → Actions: every job green on the latest push
@@ -141,7 +141,7 @@ pip install -e ".[dev]" && pytest
 | Gate | Command / check | Expected |
 |---|---|---|
 | MR red line | `tools/mr_smoke_compare.py` | ALL MATCH |
-| Suite | `pytest` | 99 passed, 5 skipped |
+| Suite | `pytest` | 125 passed, 5 skipped |
 | README literal | section 1 above | all PASS |
 | No placeholders | `grep -rn "TODO\|FIXME\|<org>" --include="*.py" --include="*.md" .` | no hits |
 | English only | `grep -rP '[\x{4e00}-\x{9fff}]' README.md DEPLOY.md lgmt/ --include="*.md" --include="*.py"` | no hits |

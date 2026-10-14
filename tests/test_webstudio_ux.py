@@ -122,19 +122,23 @@ def test_workers_default_is_32():
 def test_workflow3_single_format_redesign():
     page = _page()
     # spec sentence is featured
-    assert "One test case = a few premise lines + one conclusion." in page
-    # main form fields present
-    assert 'id="qf-premises"' in page and 'id="qf-conclusion"' in page
-    # advanced batch JSONL fold present with template placeholder
-    assert "Advanced: batch JSONL" in page
+    assert "One test case = a few premise lines + one conclusion" in page
+    # single smart input + Load Example dropdown with exactly 3 options
     assert 'id="c-cases"' in page
-    assert "premises_text" in page
-    # unstructured mode fully removed from the UI
-    assert "sub-btn-unstructured" not in page
-    assert "c-unstructured" not in page
-    assert "Unstructured Paragraph" not in page
-    assert "unstructured_en" not in page and "unstructured_zh" not in page
-    assert "switchCustomMode" not in page
+    assert "Load Example" in page
+    assert "Plain Text — Medical &amp; Legal (English)" in page
+    assert "中文业务规则段落 (Chinese)" in page
+    assert "Structured JSONL (NL + FOL)" in page
+    # register-custom-MR drawer per spec
+    assert "Register Custom MR" in page
+    assert "Verify with Z3 &amp; Register" in page
+    assert "custom-mr-checks" in page
+    assert "Executes Python locally" in page
+    assert "MRCxDoubleNegation" in page  # Listing 1 template pre-filled
+    # removed controls stay removed
+    for dead in ["qf-premises", "qf-label", "c-exec-mode", "c-realize",
+                 "Batch Queue", "sub-btn-"]:
+        assert dead not in page
     # prompting still defaults to zero_direct
     assert '<select id="c-prompting">' in page
     idx = page.index('id="c-prompting"')

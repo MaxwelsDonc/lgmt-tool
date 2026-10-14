@@ -130,10 +130,7 @@ def test_unstructured_paragraph_extraction_and_chinese_nl2fol():
     translator = make_nl2fol_translator(client, "fake-model")
     paragraph = "所有在胁迫下签署的合同都是可撤销的。Smith合同是在胁迫下签署的。因此，Smith合同是可撤销的。"
     cases = _parse_source_cases(
-        paragraph,
-        translator=translator,
-        extractor=extractor,
-        input_mode="unstructured",
+        paragraph, translator=translator, extractor=extractor
     )
     assert len(cases) == 1
     assert cases[0].premises_text[0] == "所有在胁迫下签署的合同都是可撤销的。"

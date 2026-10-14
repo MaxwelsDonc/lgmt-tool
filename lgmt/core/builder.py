@@ -384,3 +384,112 @@ def make_realize_fn(
         return followup
 
     return realize
+
+
+def parse_and_normalize_cases(
+    raw_input: str,
+    translator: Optional[FOLTranslator] = None,
+    extractor: Optional[UnstructuredExtractor] = None,
+) -> List[TestCase]:
+    """Sniff the input format and normalize it into ``TestCase`` objects.
+
+    Branch A (JSONL): every non-empty line starts with ``{`` — parse per line;
+    records may carry logic fields, text fields, or ``raw_text``.
+    Branch B (plain text): split into blank-line-separated blocks; a block
+    whose every line parses as FOL becomes a pure-FOL case (last line is the
+    conclusion), anything else is treated as an unstructured NL paragraph.
+    No ``input_mode`` is needed — the backend decides.
+    """
+    from lgmt.utils.labels import canonical_label
+
+    text = (raw_input or "").strip()
+    if not text:
+        raise ValueError("no test cases found — provide at least one test case")
+
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    records: List[dict] = []
+
+    if all(ln.lstrip().startswith("{") for ln in lines):
+        # ---- Branch A: JSONL ----
+        for lineno, raw in enumerate(text.splitlines(), 1):
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"line {lineno}: invalid JSON ({e})") from e
+            if not isinstance(obj, dict):
+                raise ValueError(f"line {lineno}: expected a JSON object")
+            has_logic = bool(obj.get("premises_logic") and obj.get("conclusion_logic"))
+            has_text = bool(obj.get("premises_text") and obj.get("conclusion_text"))
+            has_raw = bool(obj.get("raw_text"))
+            if not (has_logic or has_text or has_raw):
+                raise ValueError(
+                    f"line {lineno}: each record needs ('premises_text' & "
+                    "'conclusion_text'), ('premises_logic' & 'conclusion_logic'), "
+                    "or 'raw_text'"
+                )
+            records.append(obj)
+    else:
+        # ---- Branch B: plain text / FOL blocks / unstructured paragraphs ----
+        blocks = [b.strip() for b in re.split(r"\n\s*\n", text) if b.strip()]
+        for block in blocks:
+            block_lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+            if len(block_lines) >= 2 and all(looks_like_fol(ln) for ln in block_lines):
+                records.append(
+                    {
+                        "premises_logic": block_lines[:-1],
+                        "conclusion_logic": block_lines[-1],
+                        "premises_text": block_lines[:-1],
+                        "conclusion_text": block_lines[-1],
+                        "metadata": {"label": "Unknown"},
+                    }
+                )
+            else:
+                records.append({"raw_text": block, "metadata": {"label": "Unknown"}})
+
+    # friendly up-front error when natural language needs a model we don't have
+    needs_llm = False
+    for r in records:
+        if r.get("premises_logic") and r.get("conclusion_logic"):
+            continue
+        pt = [str(p).strip() for p in (r.get("premises_text") or []) if str(p).strip()]
+        ct = str(r.get("conclusion_text") or "").strip()
+        if pt and ct and all(looks_like_fol(p) for p in pt) and looks_like_fol(ct):
+            continue
+        needs_llm = True
+        break
+    if needs_llm and translator is None:
+        raise ValueError(
+            "Natural-language or unstructured cases require a real LLM API key & model to "
+            "extract and synthesize FOL formulas. Either configure an API key & model, "
+            "or provide premises_logic/conclusion_logic fields for offline mock runs."
+        )
+
+    normalized = synthesize_missing_logic(
+        records, translator=translator, extractor=extractor
+    )
+    if not normalized:
+        raise ValueError(
+            "Could not construct valid NLTK FOL formulas from the provided cases. "
+            "Check your input sentences or FOL syntax."
+        )
+
+    cases: List[TestCase] = []
+    for obj in normalized:
+        premises_logic = list(obj["premises_logic"])
+        conclusion_logic = str(obj["conclusion_logic"])
+        cases.append(
+            TestCase(
+                premises_logic=premises_logic,
+                conclusion_logic=conclusion_logic,
+                premises_text=list(obj.get("premises_text") or premises_logic),
+                conclusion_text=str(obj.get("conclusion_text") or conclusion_logic),
+                metadata={
+                    **(obj.get("metadata") or {}),
+                    "label": canonical_label((obj.get("metadata") or {}).get("label")),
+                },
+            )
+        )
+    return cases

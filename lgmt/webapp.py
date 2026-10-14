@@ -71,6 +71,43 @@ EXAMPLE_FOL_JSONL = """\
 {"premises_logic": ["all x.(Manager(x) -> Office(x))", "Office(alice)"], "conclusion_logic": "Manager(alice)", "premises_text": ["All managers have a private office.", "Alice has a private office."], "conclusion_text": "Alice is a manager.", "metadata": {"label": "Unknown"}}
 """
 
+LISTING1_CUSTOM_MR_TEMPLATE = """\
+import copy
+from nltk.sem.logic import LogicParser, NegatedExpression
+from lgmt.core.structure import MetamorphicRelation, TestCase
+
+
+class MRCxDoubleNegation(MetamorphicRelation):
+    def __init__(self):
+        self.index = "MR-CX"
+        self.name = "Double Negation (Custom)"
+
+    def check_applicability_logic(self, fol: str) -> bool:
+        return bool(fol)
+
+    def source_templates(self) -> list[str]:
+        return []
+
+    def check_applicability(self, tc: TestCase) -> bool:
+        return bool(tc.conclusion_logic)
+
+    def transform(self, tc: TestCase) -> TestCase:
+        follow = copy.deepcopy(tc)
+        ast = LogicParser().parse(tc.conclusion_logic)
+        follow.conclusion_logic = str(NegatedExpression(NegatedExpression(ast)))
+        follow.conclusion_text = f"[Changed_conclusion] It is not the case that not ({tc.conclusion_text})"
+        return follow
+"""
+
+EXAMPLE_PLAINTEXT_EN = """Every patient who takes the prescribed antiviral medication recovers within a week. Alice is a patient who takes the prescribed antiviral medication. Does Alice recover within a week?
+
+All contracts signed under duress are legally voidable. The Smith commercial lease is a contract signed under duress. Is the Smith commercial lease legally voidable?"""
+
+EXAMPLE_PLAINTEXT_ZH = """\
+根据医疗指南，所有按时服用该抗病毒药物的患者都会在一周内康复。张伟是一名患者并且按时服用了该抗病毒药物。请问：张伟会在一周内康复吗？
+
+所有在胁迫下签署的商业合同都是可撤销的。甲乙双方的采购协议是在胁迫下签署的商业合同。因此，甲乙双方的采购协议是可撤销的。"""
+
 EXAMPLE_NL_JSONL = EXAMPLE_NL_EN_JSONL
 EXAMPLE_JSONL = EXAMPLE_FOL_JSONL
 
@@ -178,85 +215,15 @@ def _parse_source_cases(
     text: str,
     translator: Optional[FOLTranslator] = None,
     extractor: Optional[UnstructuredExtractor] = None,
-    input_mode: str = "jsonl",
 ) -> List[TestCase]:
-    """Parse user custom inputs across all supported forms into ``TestCase`` objects."""
-    raw_records: List[Dict[str, Any]] = []
+    """Parse user custom inputs of any supported form into ``TestCase`` objects.
 
-    if input_mode == "unstructured":
-        blocks = [b.strip() for b in text.strip().split("\n\n") if b.strip()]
-        if not blocks:
-            raise ValueError("No text found — paste at least one reasoning paragraph.")
-        for b in blocks:
-            raw_records.append({"raw_text": b, "metadata": {"label": "Unknown"}})
-    else:
-        for lineno, line in enumerate(text.splitlines(), 1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError as e:
-                raise ValueError(f"line {lineno}: invalid JSON ({e})") from e
-            if not isinstance(obj, dict):
-                raise ValueError(f"line {lineno}: expected a JSON object")
-            has_logic = bool(obj.get("premises_logic") and obj.get("conclusion_logic"))
-            has_text = bool(obj.get("premises_text") and obj.get("conclusion_text"))
-            has_raw = bool(obj.get("raw_text"))
-            if not (has_logic or has_text or has_raw):
-                raise ValueError(
-                    f"line {lineno}: each record needs ('premises_text' & 'conclusion_text'), "
-                    "('premises_logic' & 'conclusion_logic'), or 'raw_text'"
-                )
-            raw_records.append(obj)
+    The backend sniffs the format automatically (JSONL vs plain text vs FOL
+    blocks) — no ``input_mode`` needed.
+    """
+    from lgmt.core.builder import parse_and_normalize_cases
 
-    if not raw_records:
-        raise ValueError("no test cases found — provide at least one test case")
-
-    needs_llm = False
-    for r in raw_records:
-        if r.get("premises_logic") and r.get("conclusion_logic"):
-            continue
-        pt = [str(p).strip() for p in (r.get("premises_text") or []) if str(p).strip()]
-        ct = str(r.get("conclusion_text") or "").strip()
-        if pt and ct and all(looks_like_fol(p) for p in pt) and looks_like_fol(ct):
-            continue
-        needs_llm = True
-        break
-
-    if needs_llm and translator is None:
-        raise ValueError(
-            "Natural-language or unstructured cases require a real LLM API key & model to "
-            "extract and synthesize FOL formulas. Either configure an API key & model above, "
-            "or switch to Pure FOL / Dual NL+FOL input for Offline Mock Mode."
-        )
-
-    normalized = synthesize_missing_logic(
-        raw_records, translator=translator, extractor=extractor
-    )
-    if not normalized:
-        raise ValueError(
-            "Could not construct valid NLTK FOL formulas from the provided cases. "
-            "Check your input sentences or FOL syntax."
-        )
-
-    cases: List[TestCase] = []
-    for obj in normalized:
-        premises_logic = list(obj["premises_logic"])
-        conclusion_logic = str(obj["conclusion_logic"])
-        cases.append(
-            TestCase(
-                premises_logic=premises_logic,
-                conclusion_logic=conclusion_logic,
-                premises_text=list(obj.get("premises_text") or premises_logic),
-                conclusion_text=str(obj.get("conclusion_text") or conclusion_logic),
-                metadata={
-                    **(obj.get("metadata") or {}),
-                    "label": canonical_label((obj.get("metadata") or {}).get("label")),
-                },
-            )
-        )
-    return cases
+    return parse_and_normalize_cases(text, translator=translator, extractor=extractor)
 
 
 # --------------------------------------------------------------------- #
@@ -435,13 +402,15 @@ def execute_custom_workflow(
     realize: bool = False,
     use_mock: bool = False,
     mock_persona: str = "flawed",
-    input_mode: str = "jsonl",
 ) -> Dict[str, Any]:
-    """Run Workflow 3: Normalize custom cases (Form / Unstructured / JSONL), build MGs, and test."""
+    """Run Workflow 3: sniff & normalize custom cases, build MGs, and test."""
     if not categories:
         raise ValueError("Select at least one MR category (E, S, P, C).")
+    wanted = {c.upper() for c in categories}
     selected = [
-        mr for mr in ALL_MRS if mr.index.split("-")[1][0].upper() in {c.upper() for c in categories}
+        mr
+        for mr in ALL_MRS
+        if mr.index.upper() in wanted or mr.index.split("-")[1][0].upper() in wanted
     ]
     if not selected:
         raise ValueError("No MRs matched the selected categories.")
@@ -466,10 +435,7 @@ def execute_custom_workflow(
         extractor = make_unstructured_extractor(client, model_name)
 
     cases = _parse_source_cases(
-        cases_jsonl,
-        translator=translator,
-        extractor=extractor,
-        input_mode=input_mode,
+        cases_jsonl, translator=translator, extractor=extractor
     )
     realize_fn = make_realize_fn(client, model_name) if (realize and not use_mock) else None
 
@@ -690,6 +656,10 @@ _STUDIO_CSS = """
     .queue-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 8px; background: #f8fafc; border-radius: 6px; font-size: 12px; color: #1e293b; margin-bottom: 4px; border-left: 3px solid #3a6ea5; }
     .queue-item button { border: none; background: none; color: #b91c1c; cursor: pointer; font-size: 11.5px; font-weight: 600; }
 
+    .mr-status { font-size: 12.5px; color: #475569; }
+    .mr-status.ok { color: #15803d; font-weight: 650; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 6px 12px; }
+    .mr-status.error { color: #b91c1c; font-weight: 600; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 6px 12px; }
+
     /* run progress */
     .run-progress { display: none; margin-top: 12px; align-items: center; gap: 12px; }
     .run-progress.active { display: flex; }
@@ -745,10 +715,10 @@ var TAB_STATE = {
     tabKey: 'custom',
     hasRun: false,
     isError: false,
-    summary: 'Ready — type premises and a conclusion above (or open Advanced for batch JSONL) and click Build MGs & Test Model.',
+    summary: 'Ready — paste your test cases above and click Build MGs & Test Model.',
     html: emptyCardHtml(
       'No Custom Cases Evaluated Yet',
-      'Enter your own domain premises and conclusions in Workflow 3 above and click <b>Build MGs &amp; Test Model</b>. Results for your custom cases will appear strictly in this tab.'
+      'Paste your own cases (plain text, 中文, FOL, or JSONL) in Workflow 3 above and click <b>Build MGs &amp; Test Model</b>. Results appear strictly in this tab.'
     )
   }
 };
@@ -775,7 +745,11 @@ function renderActiveTabState(){
 }
 
 function switchTab(idx){
+  var prev = activeTab;
   activeTab = idx;
+  if (prev !== idx && (idx === 2 || idx === 3) && (prev === 2 || prev === 3)) {
+    syncModelConfig(prev);
+  }
   [1, 2, 3].forEach(function(i){
     document.getElementById('tab-btn-' + i).classList.toggle('active', i === idx);
     document.getElementById('wf-panel-' + i).classList.toggle('active', i === idx);
@@ -784,95 +758,75 @@ function switchTab(idx){
 }
 
 // ---------------- Tab 3 Sub-Mode & Quick Form Queue ----------------
-var formQueue = [
-  {
-    premises_text: ["all x.(Man(x) -> Mortal(x))", "Man(socrates)"],
-    conclusion_text: "Mortal(socrates)",
-    metadata: {label: "True"}
-  }
-];
+// ---------------- Tab 3: smart input, model sync, custom-MR drawer ----------------
+var CUSTOM_MRS = [];
 
-function renderFormQueue(){
-  var listEl = document.getElementById('qf-queue-list');
-  var titleEl = document.getElementById('qf-queue-title');
-  if (!listEl) return;
-  titleEl.textContent = 'Batch Queue (' + formQueue.length + ' case(s) queued — or click Run directly to use current form fields)';
-  if (!formQueue.length) {
-    listEl.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:4px 0;">Queue is empty — clicking Run will evaluate the case currently typed in the form above.</div>';
-    return;
-  }
-  var htmlStr = '';
-  formQueue.forEach(function(item, idx){
-    var pPreview = item.premises_text.join(' ; ');
-    if (pPreview.length > 75) pPreview = pPreview.slice(0, 75) + '…';
-    htmlStr += '<div class="queue-item">'
-      + '<span><b>#' + (idx + 1) + '</b> [' + esc(item.metadata.label) + '] ' + esc(pPreview) + ' &rArr; <b>' + esc(item.conclusion_text) + '</b></span>'
-      + '<button type="button" onclick="removeFormCase(' + idx + ')">✕ Remove</button>'
-      + '</div>';
-  });
-  listEl.innerHTML = htmlStr;
-}
-
-function readCurrentFormCase(){
-  var rawP = document.getElementById('qf-premises').value || '';
-  var lines = rawP.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean);
-  var conc = (document.getElementById('qf-conclusion').value || '').trim();
-  var lbl = document.getElementById('qf-label').value || 'Unknown';
-  if (!lines.length || !conc) return null;
-  return {
-    premises_text: lines,
-    conclusion_text: conc,
-    metadata: {label: lbl}
+function fillExample(key){
+  var map = {
+    'plain_en': 'EX_PRESET_PLAIN_EN',
+    'plain_zh': 'EX_PRESET_PLAIN_ZH',
+    'jsonl': 'EX_PRESET_JSONL'
   };
+  var preset = (PRESETS[map[key]] || '');
+  if (preset) document.getElementById('c-cases').value = preset;
 }
 
-function addFormCaseToQueue(){
-  var item = readCurrentFormCase();
-  if (!item) {
-    alert('Please enter at least one premise line and a conclusion.');
-    return;
-  }
-  formQueue.push(item);
-  renderFormQueue();
+// Keep Tab 2 and Tab 3 model configuration in sync (both directions).
+function syncModelConfig(source){
+  var pairs = [
+    ['b-key', 'c-key'], ['b-url', 'c-url'],
+    ['b-model', 'c-model'], ['b-prompting', 'c-prompting']
+  ];
+  pairs.forEach(function(pr){
+    var from = (source === 2) ? pr[0] : pr[1];
+    var to = (source === 2) ? pr[1] : pr[0];
+    var el = document.getElementById(to);
+    if (el) el.value = document.getElementById(from).value;
+  });
 }
 
-function removeFormCase(idx){
-  formQueue.splice(idx, 1);
-  renderFormQueue();
+function toggleMrDrawer(){
+  var d = document.getElementById('mr-drawer');
+  d.style.display = (d.style.display === 'none') ? 'block' : 'none';
 }
 
-function clearFormQueue(){
-  formQueue = [];
-  renderFormQueue();
-}
-
-function fillQuickForm(kind){
-  if (kind === 'en') {
-    document.getElementById('qf-premises').value = "Every patient who takes the medication recovers within a week.\nAlice takes the medication.";
-    document.getElementById('qf-conclusion').value = "Alice recovers within a week.";
-    document.getElementById('qf-label').value = "True";
-    document.getElementById('c-exec-mode').value = "api";
-  } else if (kind === 'zh') {
-    document.getElementById('qf-premises').value = "所有在胁迫下签署的合同都是可撤销的。\nSmith合同是在胁迫下签署的。";
-    document.getElementById('qf-conclusion').value = "Smith合同是可撤销的。";
-    document.getElementById('qf-label').value = "True";
-    document.getElementById('c-exec-mode').value = "api";
-  } else {
-    document.getElementById('qf-premises').value = "all x.(Bird(x) -> Fly(x))\nBird(tweety)";
-    document.getElementById('qf-conclusion').value = "Fly(tweety)";
-    document.getElementById('qf-label').value = "True";
-  }
-  toggleCustomExecMode();
-  var c = readCurrentFormCase();
-  if (c) { formQueue = [c]; renderFormQueue(); }
+function registerCustomMr(){
+  var status = document.getElementById('mr-status');
+  var code = document.getElementById('mr-code').value || '';
+  status.className = 'mr-status';
+  status.textContent = 'Verifying with Z3…';
+  fetch('/api/register-mr', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({code: code})
+  })
+  .then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
+  .then(function(res){
+    if (!res.ok || res.data.error) {
+      status.className = 'mr-status error';
+      status.textContent = '✗ ' + (res.data.error || 'Registration failed.');
+      return;
+    }
+    var info = res.data.registered[0];
+    CUSTOM_MRS.push(info.index);
+    var box = document.getElementById('custom-mr-checks');
+    var lab = document.createElement('label');
+    lab.innerHTML = '<input type="checkbox" class="c-cat c-custom" value="' +
+      info.index + '" checked> ' + info.index + ' (Custom)';
+    box.appendChild(lab);
+    status.className = 'mr-status ok';
+    status.textContent = '✓ Z3 Equivalence Verified (' + info.verified_count + '/' +
+      info.tested + ' test formulas) · Registered ' + info.index + ': ' + info.name;
+  })
+  .catch(function(err){
+    status.className = 'mr-status error';
+    status.textContent = '✗ Request error: ' + err;
+  });
 }
 
 function loadJsonlPreset(key){
-  document.getElementById('c-cases').value = PRESETS[key] || PRESETS.dual_fol;
-  if (key === 'nl_en' || key === 'nl_zh') {
-    document.getElementById('c-exec-mode').value = 'api';
-    toggleCustomExecMode();
-  }
+  var el = document.getElementById('c-cases');
+  if (el) el.value = PRESETS[key] || PRESETS.dual_fol;
 }
 
 function handleFileUpload(input){
@@ -882,14 +836,6 @@ function handleFileUpload(input){
     document.getElementById('c-cases').value = e.target.result || '';
   };
   reader.readAsText(input.files[0], 'UTF-8');
-}
-
-function toggleCustomExecMode(){
-  var isMock = document.getElementById('c-exec-mode').value === 'mock';
-  document.getElementById('c-key-wrap').style.opacity = isMock ? '0.45' : '1';
-  document.getElementById('c-url-wrap').style.opacity = isMock ? '0.45' : '1';
-  document.getElementById('c-model-wrap').style.opacity = isMock ? '0.45' : '1';
-  document.getElementById('c-realize-wrap').style.opacity = isMock ? '0.45' : '1';
 }
 
 // ---------------- Run Progress (1s polling of /api/progress) ----------------
@@ -997,48 +943,26 @@ function runBenchmark(){
 function runCustom(){
   var cats = [];
   document.querySelectorAll('.c-cat:checked').forEach(function(el){ cats.push(el.value); });
-  var isMock = document.getElementById('c-exec-mode').value === 'mock';
-  var payloadText = '';
-  var inputMode = 'jsonl';
-  var advanced = (document.getElementById('c-cases').value || '').trim();
-
-  if (advanced) {
-    // Advanced batch JSONL (non-empty box takes precedence over the form)
-    payloadText = advanced;
-  } else {
-    var items = formQueue.slice();
-    var current = readCurrentFormCase();
-    if (!items.length && current) {
-      items.push(current);
-    } else if (current) {
-      var sig = JSON.stringify(current);
-      var exists = items.some(function(x){ return JSON.stringify(x) === sig; });
-      if (!exists) items.push(current);
-    }
-    if (!items.length) {
-      TAB_STATE[3].isError = true;
-      TAB_STATE[3].summary = 'Please enter premises and a conclusion (or paste batch JSONL in Advanced).';
-      renderActiveTabState();
-      return;
-    }
-    payloadText = items.map(function(x){ return JSON.stringify(x); }).join('\n');
+  var payloadText = (document.getElementById('c-cases').value || '').trim();
+  if (!payloadText) {
+    TAB_STATE[3].isError = true;
+    TAB_STATE[3].summary = 'Please paste your test cases (plain text, 中文, FOL, or JSONL).';
+    renderActiveTabState();
+    return;
   }
-
   postTabApi(3, '/api/custom', {
     api_key: document.getElementById('c-key').value,
     base_url: document.getElementById('c-url').value,
     model: document.getElementById('c-model').value,
     prompting: document.getElementById('c-prompting').value,
     categories: cats,
-    realize: document.getElementById('c-realize').checked,
-    use_mock: isMock,
-    input_mode: inputMode,
+    realize: true,
+    use_mock: false,
     cases_jsonl: payloadText
   }, 'btn-run-custom');
 }
 
 window.addEventListener('DOMContentLoaded', function(){
-  renderFormQueue();
   renderActiveTabState();
 });
 """
@@ -1051,6 +975,9 @@ def _render_studio_page() -> str:
             "nl_zh": EXAMPLE_NL_ZH_JSONL,
             "pure_fol": EXAMPLE_PURE_FOL_JSONL,
             "dual_fol": EXAMPLE_FOL_JSONL,
+            "EX_PRESET_PLAIN_EN": EXAMPLE_PLAINTEXT_EN,
+            "EX_PRESET_PLAIN_ZH": EXAMPLE_PLAINTEXT_ZH,
+            "EX_PRESET_JSONL": EXAMPLE_FOL_JSONL,
         },
         ensure_ascii=False,
     ).replace("</", "<\\/")
@@ -1183,85 +1110,10 @@ def _render_studio_page() -> str:
         <!-- ==================== Workflow 3: Test Custom Cases ==================== -->
         <section class="wf-panel" id="wf-panel-3">
             <div class="wf-guide">
-                <b>Workflow 3 · Test Your Own Domain Cases:</b> One test case = a few premise lines + one conclusion. English, 中文, or FOL are all accepted — no formulas and no gold labels needed: the LLM synthesizes the logic automatically and LGMT generates equivalent variants for testing. Use the form below, or open <b>Advanced: batch JSONL</b> for bulk input.
+                <b>Workflow 3 · Test Your Own Domain Cases:</b> One test case = a few premise lines + one conclusion — English, 中文, or FOL are all accepted. No formulas and no gold labels needed: the LLM synthesizes the logic automatically and LGMT rewrites it into provably equivalent variants.
             </div>
 
-            <div class="wf-guide" style="border-left-color:#1f9d55;">
-                <b>One test case = a few premise lines + one conclusion.</b><br>
-                Premises (one per line) plus a single conclusion — in English, 中文, or FOL syntax.
-                No FOL knowledge and no gold labels needed: the LLM translates the sentences into
-                logic automatically, and LGMT rewrites them into provably equivalent variants.
-            </div>
-
-            <div class="sub-hint">
-                <span>Type below, optionally queue several cases as a batch, then click <b>Build MGs &amp; Test Model</b>.</span>
-                <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                    <button type="button" class="btn-secondary" onclick="fillQuickForm('en')">Example: English NL</button>
-                    <button type="button" class="btn-secondary" onclick="fillQuickForm('zh')">Example: 中文自然语言</button>
-                    <button type="button" class="btn-secondary" onclick="fillQuickForm('fol')">Example: Pure FOL (Offline-ready)</button>
-                </div>
-            </div>
-            <div class="form-split">
-                <div class="wf-field">
-                    <label>Premises (one sentence or FOL formula per line)</label>
-                    <textarea id="qf-premises" rows="3" placeholder="All birds can fly.&#10;Tweety is a bird.">all x.(Man(x) -> Mortal(x))
-Man(socrates)</textarea>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:8px;">
-                    <div class="wf-field">
-                        <label>Conclusion (single statement or FOL formula)</label>
-                        <input type="text" id="qf-conclusion" value="Mortal(socrates)" placeholder="Tweety can fly.">
-                    </div>
-                    <div style="display:flex;gap:8px;align-items:end;">
-                        <div class="wf-field" style="flex:1;">
-                            <label>Expected Label (Optional)</label>
-                            <select id="qf-label">
-                                <option value="True" selected>True (Entailed)</option>
-                                <option value="False">False (Contradicted)</option>
-                                <option value="Unknown">Unknown / Unlabeled (Consistency check only)</option>
-                            </select>
-                        </div>
-                        <button type="button" class="btn-secondary" style="height:36px;padding:0 14px;" onclick="addFormCaseToQueue()">+ Add to Batch</button>
-                    </div>
-                </div>
-            </div>
-            <div class="queue-box">
-                <div class="queue-header">
-                    <span id="qf-queue-title">Batch Queue (1 case ready — or edit the fields above and click Run directly)</span>
-                    <button type="button" class="btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="clearFormQueue()">Clear Batch</button>
-                </div>
-                <div id="qf-queue-list"></div>
-            </div>
-
-            <details style="margin-top:14px;">
-                <summary style="cursor:pointer;font-size:13px;font-weight:650;color:#334155;">Advanced: batch JSONL (bulk input / file upload)</summary>
-                <div style="margin-top:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;">
-                    <div class="sub-hint">
-                        <span>Paste JSON objects (one per line) or upload a <code>.jsonl</code> file. Each line: <code>{{"premises_text": ["..."], "conclusion_text": "..."}}</code> — or provide <code>premises_logic</code> / <code>conclusion_logic</code> directly. If this box is non-empty it takes precedence over the form above.</span>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-                            <label class="btn-secondary" style="cursor:pointer;margin:0;">
-                                📂 Upload .jsonl File <input type="file" accept=".jsonl,.json,.txt" style="display:none;" onchange="handleFileUpload(this)">
-                            </label>
-                            <button type="button" class="btn-secondary" onclick="loadJsonlPreset('nl_en')">English NL</button>
-                            <button type="button" class="btn-secondary" onclick="loadJsonlPreset('nl_zh')">中文 NL</button>
-                            <button type="button" class="btn-secondary" onclick="loadJsonlPreset('pure_fol')">Pure FOL</button>
-                            <button type="button" class="btn-secondary" onclick="loadJsonlPreset('dual_fol')">Dual NL+FOL</button>
-                        </div>
-                    </div>
-                    <div class="wf-field">
-                        <textarea id="c-cases" rows="5" placeholder='{{"premises_text": ["..."], "conclusion_text": "..."}}'></textarea>
-                    </div>
-                </div>
-            </details>
-
-            <div class="wf-grid" style="margin-top:14px;">
-                <div class="wf-field">
-                    <label>Execution Mode</label>
-                    <select id="c-exec-mode" onchange="toggleCustomExecMode()">
-                        <option value="api" selected>Real LLM API (supports NL, 中文, Unstructured &amp; FOL)</option>
-                        <option value="mock">Offline Mock Mode (instant, requires FOL formulas)</option>
-                    </select>
-                </div>
+            <div class="wf-grid">
                 <div class="wf-field" id="c-key-wrap">
                     <label>API Key (in-memory only)</label>
                     <input type="password" id="c-key" placeholder="sk-...">
@@ -1284,14 +1136,49 @@ Man(socrates)</textarea>
                     </select>
                 </div>
             </div>
-            <div class="chk-row" style="margin-top:8px;">
+
+            <div style="margin-top:14px;">
+                <div class="sub-hint">
+                    <span><b>Test Cases</b> — paste plain text, Chinese/English sentences, FOL formulas, or JSONL. <b>No ground-truth labels needed.</b></span>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                        <select class="btn-secondary" style="padding:5px 8px;" onchange="if(this.value){{fillExample(this.value);this.value='';}}">
+                            <option value="">Load Example ▾</option>
+                            <option value="plain_en">1. Plain Text — Medical &amp; Legal (English)</option>
+                            <option value="plain_zh">2. 中文业务规则段落 (Chinese)</option>
+                            <option value="jsonl">3. Structured JSONL (NL + FOL)</option>
+                        </select>
+                        <label class="btn-secondary" style="cursor:pointer;margin:0;">
+                            📂 Upload File <input type="file" accept=".txt,.jsonl,.json" style="display:none;" onchange="handleFileUpload(this)">
+                        </label>
+                    </div>
+                </div>
+                <div class="wf-field">
+                    <textarea id="c-cases" rows="6">{html.escape(EXAMPLE_PLAINTEXT_EN)}</textarea>
+                </div>
+            </div>
+
+            <div class="chk-row" style="margin-top:12px;">
                 <span style="font-size:12px;font-weight:700;color:#4b5563;text-transform:uppercase;">MR Categories:</span>
-                <label><input type="checkbox" class="c-cat" value="E" checked> E (Formula Equivalence ×10)</label>
-                <label><input type="checkbox" class="c-cat" value="S" checked> S (Symbol Renaming ×2)</label>
-                <label><input type="checkbox" class="c-cat" value="P" checked> P (Premise Restructuring ×5)</label>
-                <label><input type="checkbox" class="c-cat" value="C" checked> C (Conclusion Variation ×3)</label>
-                <span style="margin-left:10px;color:#cbd5e1;">|</span>
-                <label id="c-realize-wrap"><input type="checkbox" id="c-realize" checked> LLM Logic→NL Realization (preserves English/中文)</label>
+                <label><input type="checkbox" class="c-cat" value="E" checked> E (Formula &times;10)</label>
+                <label><input type="checkbox" class="c-cat" value="S" checked> S (Symbol &times;2)</label>
+                <label><input type="checkbox" class="c-cat" value="P" checked> P (Premise &times;5)</label>
+                <label><input type="checkbox" class="c-cat" value="C" checked> C (Conclusion &times;3)</label>
+                <span id="custom-mr-checks"></span>
+                <button type="button" class="btn-secondary" onclick="toggleMrDrawer()">➕ Register Custom MR</button>
+            </div>
+
+            <div id="mr-drawer" style="display:none;margin-top:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;">
+                <div style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:10px;">
+                    ⚠️ Executes Python locally — only paste code you trust. Every registered MR is verified for logical equivalence with Z3 before use.
+                </div>
+                <div class="wf-field">
+                    <label>Custom Metamorphic Relation (subclass of MetamorphicRelation)</label>
+                    <textarea id="mr-code" rows="15" style="font-size:12px;">{html.escape(LISTING1_CUSTOM_MR_TEMPLATE)}</textarea>
+                </div>
+                <div class="wf-actions" style="border-top:none;padding-top:10px;">
+                    <button type="button" class="btn-primary" onclick="registerCustomMr()">Verify with Z3 &amp; Register</button>
+                    <span class="mr-status" id="mr-status" style="font-size:12.5px;color:#475569;"></span>
+                </div>
             </div>
 
             <div class="wf-actions">
@@ -1398,6 +1285,19 @@ class _StudioHandler(BaseHTTPRequestHandler):
                     prompting=data.get("prompting", "zero_cot"),
                     workers=int(data.get("workers", 16)),
                 )
+            elif parsed.path == "/api/register-mr":
+                code = data.get("code", "")
+                if not code.strip():
+                    self._send_json({"error": "Provide Python code defining a MetamorphicRelation subclass."}, status=400)
+                    return
+                from lgmt.mrs import load_mr_from_source
+
+                registered = load_mr_from_source(code, verify_z3=True)
+                self._send_json({
+                    "registered": registered,
+                    "trust_notice": "Executes Python locally — only paste code you trust.",
+                })
+                return
             elif parsed.path == "/api/custom":
                 state = execute_custom_workflow(
                     api_key=data.get("api_key", ""),
@@ -1406,9 +1306,8 @@ class _StudioHandler(BaseHTTPRequestHandler):
                     cases_jsonl=data.get("cases_jsonl", ""),
                     categories=data.get("categories") or ["E", "S", "P", "C"],
                     prompting=data.get("prompting", "zero_cot"),
-                    realize=bool(data.get("realize", False)),
+                    realize=bool(data.get("realize", True)),
                     use_mock=bool(data.get("use_mock", False)),
-                    input_mode=data.get("input_mode", "jsonl"),
                 )
             else:
                 self._send_json({"error": f"Unknown endpoint {parsed.path}"}, status=404)
@@ -1455,14 +1354,12 @@ def build_app():
         api_key: str,
         base_url: str,
         model: str,
-        input_mode_label: str,
         cases_text: str,
         categories: List[str],
         prompting: str,
         realize: bool,
         use_mock: bool,
     ):
-        mode = "unstructured" if "Unstructured" in (input_mode_label or "") else "jsonl"
         try:
             state = execute_custom_workflow(
                 api_key=api_key,
@@ -1473,7 +1370,6 @@ def build_app():
                 prompting=prompting,
                 realize=realize,
                 use_mock=use_mock,
-                input_mode=mode,
             )
             return state["summary"], _report_iframe(state["report"])
         except Exception as e:
@@ -1538,11 +1434,6 @@ def build_app():
                 base_url3 = gr.Textbox(label="Base URL", value="https://api.openai.com/v1")
                 model3 = gr.Textbox(label="Model", placeholder="gpt-4o")
             with gr.Row():
-                input_mode3 = gr.Radio(
-                    choices=["JSONL (Pure NL / Pure FOL / Dual NL+FOL)", "Unstructured Paragraph (Auto-Extract)"],
-                    value="JSONL (Pure NL / Pure FOL / Dual NL+FOL)",
-                    label="Input format",
-                )
                 categories3 = gr.CheckboxGroup(
                     choices=category_choices, value=category_choices, label="MR categories"
                 )
@@ -1562,7 +1453,7 @@ def build_app():
             report3 = gr.HTML(label="Interactive Report")
             run_btn3.click(
                 _gr_custom,
-                inputs=[api_key3, base_url3, model3, input_mode3, cases_box3, categories3, prompting3, realize3, use_mock3],
+                inputs=[api_key3, base_url3, model3, cases_box3, categories3, prompting3, realize3, use_mock3],
                 outputs=[status3, report3],
             )
 

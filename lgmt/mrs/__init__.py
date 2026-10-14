@@ -122,3 +122,77 @@ def get_mr(name_or_index: str):
         if idx.upper().replace("MR-", "") == norm:
             return mr
     raise KeyError(f"Unknown MR: {name_or_index!r}")
+
+
+# --------------------------------------------------------------------- #
+# dynamic custom-MR registration (CLI --mr-file / Web Studio drawer)
+# --------------------------------------------------------------------- #
+def register_mr_class(cls: type, verify_z3: bool = True) -> dict:
+    """Validate and register a ``MetamorphicRelation`` subclass.
+
+    Steps: (1) subclass + no-arg instantiable with non-empty index/name;
+    (2) optional Z3 equivalence verification on the standard FOL samples
+    (raises ``ValueError`` on any non-equivalent or unparseable output);
+    (3) insert into the registries (same-index entries are replaced);
+    (4) return a summary dict.
+    """
+    from lgmt.core.structure import MetamorphicRelation
+    from lgmt.mrs.verifier import verify_mr_equivalence_with_z3
+
+    if not (isinstance(cls, type) and issubclass(cls, MetamorphicRelation)):
+        raise ValueError(
+            f"{getattr(cls, '__name__', cls)!r} is not a MetamorphicRelation subclass"
+        )
+    try:
+        mr = cls()
+    except Exception as e:
+        raise ValueError(f"{cls.__name__} cannot be instantiated without arguments: {e}") from e
+    if not getattr(mr, "index", ""):
+        raise ValueError(f"{cls.__name__} must set a non-empty 'index' (e.g. 'MR-CX')")
+    if not getattr(mr, "name", ""):
+        raise ValueError(f"{cls.__name__} must set a non-empty 'name'")
+
+    result = {"index": mr.index, "name": mr.name, "class_name": cls.__name__}
+    if verify_z3:
+        verification = verify_mr_equivalence_with_z3(mr)
+        if verification["tested"] == 0:
+            raise ValueError(
+                f"{mr.index} is not applicable to any of the standard FOL test samples"
+            )
+        result.update(verification)
+
+    MR_CLASS_REGISTRY[cls.__name__] = cls
+    MR_INDEX_REGISTRY[mr.index] = mr
+    for i, existing in enumerate(ALL_MRS):
+        if existing.index == mr.index:
+            ALL_MRS[i] = mr
+            break
+    else:
+        ALL_MRS.append(mr)
+    return result
+
+
+def load_mr_from_source(code_str: str, verify_z3: bool = True) -> list:
+    """Load every ``MetamorphicRelation`` subclass defined in ``code_str``
+    and register it (with Z3 verification by default)."""
+    import inspect
+
+    from lgmt.core.structure import MetamorphicRelation
+
+    namespace: dict = {"__name__": "<custom-mr>"}
+    exec(compile(code_str, "<custom-mr>", "exec"), namespace)  # noqa: S102
+    results = []
+    for obj in namespace.values():
+        if (
+            inspect.isclass(obj)
+            and issubclass(obj, MetamorphicRelation)
+            and obj is not MetamorphicRelation
+            and getattr(obj, "__module__", None) == "<custom-mr>"
+        ):
+            results.append(register_mr_class(obj, verify_z3=verify_z3))
+    if not results:
+        raise ValueError(
+            "No MetamorphicRelation subclass found in the provided code "
+            "(define a class inheriting from lgmt.core.structure.MetamorphicRelation)."
+        )
+    return results

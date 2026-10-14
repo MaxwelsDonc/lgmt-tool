@@ -141,6 +141,21 @@ def _record_needs_llm_synthesis(r: dict) -> bool:
     return True
 
 
+
+def _load_mr_files(paths) -> None:
+    """Load custom MRs from .py files (Z3-verified) before building/listing."""
+    from lgmt.mrs import load_mr_from_source
+
+    for path in paths or []:
+        with open(path, "r", encoding="utf-8") as f:
+            results = load_mr_from_source(f.read(), verify_z3=True)
+        for r in results:
+            print(
+                f"Loaded custom MR {r['index']}: {r['name']} "
+                f"(Z3-verified {r['verified_count']}/{r['tested']} test formulas)"
+            )
+
+
 # --------------------------------------------------------------------- #
 # subcommands
 # --------------------------------------------------------------------- #
@@ -222,6 +237,9 @@ def cmd_build_mgs(args) -> int:
     if not source_cases:
         print(f"Error: no source test cases loaded from {args.input}")
         return 1
+
+    if args.mr_file:
+        _load_mr_files(args.mr_file)
 
     if args.mr:
         mr_list = [get_mr(name) for name in args.mr]
@@ -450,6 +468,8 @@ def cmd_demo(args) -> int:
 
 
 def cmd_list_mrs(args) -> int:
+    if getattr(args, "mr_file", None):
+        _load_mr_files(args.mr_file)
     cat_names = {
         "E": "Formula Equivalence (De Morgan, Contraposition, Quantifiers, PNNF)",
         "S": "Symbol Renaming (Predicate / Constant Alpha-Renaming)",
@@ -513,6 +533,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--input", required=True, help="Source test-case JSONL (pure NL, unstructured, pure FOL, or NL+FOL).")
     p.add_argument("--output", required=True, help="Output MG JSONL.")
+    p.add_argument(
+        "--mr-file",
+        action="append",
+        default=None,
+        help="Path to a Python file defining custom MetamorphicRelation "
+        "subclass(es); verified with Z3 on load. Repeatable.",
+    )
     p.add_argument(
         "--mr",
         action="append",
@@ -629,6 +656,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser(
         "list-mrs",
         help="List all registered FOL-grounded metamorphic relations (built-in + custom).",
+    )
+    p.add_argument(
+        "--mr-file",
+        action="append",
+        default=None,
+        help="Path to a Python file defining custom MetamorphicRelation "
+        "subclass(es); verified with Z3 on load. Repeatable.",
     )
     p.set_defaults(func=cmd_list_mrs)
 

@@ -29,6 +29,7 @@ dependencies = [
     "loguru>=0.7",
     "tqdm>=4.60",
     "colorama>=0.4.6",
+    "z3-solver>=4.12",
 ]
 
 [project.optional-dependencies]
