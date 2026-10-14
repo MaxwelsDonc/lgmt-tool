@@ -1,55 +1,91 @@
-"""Gradio web demo for LGMT.
+"""LGMT Interactive Web Studio (Zero-Dependency Native Server + Gradio Adapter).
 
-Three tabs:
-    1. Try Demo     — one-click offline demo (mock model + bundled MGs)
-    2. Test Your Model — bring your own OpenAI-compatible endpoint and key
-    3. Browse Report   — details of the most recent run
+Provides three strictly isolated workflow tabs:
+    1. Quick Demo (Offline)   — zero API key/network; 40-group or 3,091-group tour
+    2. Benchmark Your Model   — evaluate any OpenAI-compatible endpoint on bundled sets
+    3. Test Custom Cases      — three clean input modes (Quick Form, Unstructured Text,
+                                Batch JSONL / File Upload) supporting English, Chinese,
+                                Bilingual, Pure FOL, and Dual NL+FOL inputs.
 
-Run locally:
-    pip install -r requirements-web.txt
-    python -m lgmt.webapp            # serves on http://0.0.0.0:7860
-
-gradio is imported lazily so that importing this module (e.g. during
-package discovery or testing) never requires the web extras.
+Run locally (zero extra dependencies beyond core lgmt):
+    lgmt web                  # serves on http://0.0.0.0:7860
+    lgmt-web                  # console script alias
+    python -m lgmt.webapp     # module entrypoint
 """
 import html
 import json
 import os
-import re
 import tempfile
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qs, urlparse
 
-from lgmt.core.builder import build_metamorphic_groups, make_realize_fn
+from lgmt.core.builder import (
+    FOLTranslator,
+    UnstructuredExtractor,
+    build_metamorphic_groups,
+    looks_like_fol,
+    make_nl2fol_translator,
+    make_realize_fn,
+    make_unstructured_extractor,
+    synthesize_missing_logic,
+)
 from lgmt.core.runner import PROMPTING_PRESETS, run_inference
+from lgmt.core.structure import TestCase
 from lgmt.models import MockLLMClient
 from lgmt.models.openai_compat import OpenAICompatClient
 from lgmt.mrs import ALL_MRS
-from lgmt.utils.io import (
-    load_inference_records,
-    load_metamorphic_groups,
-    write_jsonl,
-)
+from lgmt.utils.io import load_inference_records, load_metamorphic_groups
 from lgmt.utils.labels import canonical_label
 from lgmt.utils.metrics import compute_metrics, format_metrics_table
-from lgmt.utils.report import generate_run_report
+from lgmt.utils.report import (
+    _CSS as REPORT_CSS,
+    _JS as REPORT_JS,
+    REFERENCE_SNAPSHOT,
+    generate_run_report,
+    render_report_body,
+)
 
 DEMO_MGS_PATH = str(Path(__file__).resolve().parent / "demo" / "demo_mgs.jsonl")
 
-EXAMPLE_JSONL = """\
-{"premises_logic": ["all x.(Man(x) -> Mortal(x))", "Man(socrates)"],
- "conclusion_logic": "Mortal(socrates)",
- "premises_text": ["All men are mortal.", "Socrates is a man."],
- "conclusion_text": "Socrates is mortal.",
- "metadata": {"label": "True"}}
-{"premises_logic": ["all x.(Manager(x) -> Office(x))", "Office(alice)"],
- "conclusion_logic": "Manager(alice)",
- "premises_text": ["All managers have a private office.", "Alice has a private office."],
- "conclusion_text": "Alice is a manager.",
- "metadata": {"label": "Unknown"}}
+EXAMPLE_NL_EN_JSONL = """\
+{"premises_text": ["Every patient who takes the medication recovers within a week.", "Alice takes the medication."], "conclusion_text": "Alice recovers within a week.", "metadata": {"label": "True"}}
+{"premises_text": ["All contracts signed under duress are voidable.", "The Smith contract was signed under duress."], "conclusion_text": "The Smith contract is voidable.", "metadata": {"label": "True"}}
 """
 
-#: In-memory state of the most recent run (never persisted).
+EXAMPLE_NL_ZH_JSONL = """\
+{"premises_text": ["所有在胁迫下签署的合同都是可撤销的。", "Smith合同是在胁迫下签署的。"], "conclusion_text": "Smith合同是可撤销的。", "metadata": {"label": "True"}}
+{"premises_text": ["所有按时服药的患者都会在一周内康复。", "李明按时服药了。"], "conclusion_text": "李明会在一周内康复。", "metadata": {"label": "True"}}
+"""
+
+EXAMPLE_PURE_FOL_JSONL = """\
+{"premises_logic": ["all x.(Bird(x) -> Fly(x))", "Bird(tweety)"], "conclusion_logic": "Fly(tweety)", "metadata": {"label": "True"}}
+{"premises_logic": ["all x.(Manager(x) -> Office(x))", "Office(alice)"], "conclusion_logic": "Manager(alice)", "metadata": {"label": "Unknown"}}
+"""
+
+EXAMPLE_FOL_JSONL = """\
+{"premises_logic": ["all x.(Man(x) -> Mortal(x))", "Man(socrates)"], "conclusion_logic": "Mortal(socrates)", "premises_text": ["All men are mortal.", "Socrates is a man."], "conclusion_text": "Socrates is mortal.", "metadata": {"label": "True"}}
+{"premises_logic": ["all x.(Manager(x) -> Office(x))", "Office(alice)"], "conclusion_logic": "Manager(alice)", "premises_text": ["All managers have a private office.", "Alice has a private office."], "conclusion_text": "Alice is a manager.", "metadata": {"label": "Unknown"}}
+"""
+
+EXAMPLE_UNSTRUCTURED_EN = """\
+Every patient who takes the prescribed antiviral medication recovers within a week. Alice is a patient who takes the prescribed antiviral medication. Therefore, does Alice recover within a week?
+
+All contracts signed under duress are legally voidable. The Smith commercial lease is a contract signed under duress. Conclusion: The Smith commercial lease is legally voidable.\
+"""
+
+EXAMPLE_UNSTRUCTURED_ZH = """\
+根据医疗指南，所有按时服用该抗病毒药物的患者都会在一周内康复。张伟是一名患者并且按时服用了该抗病毒药物。请问：张伟会在一周内康复吗？
+
+所有在胁迫下签署的商业合同都是可撤销的。甲乙双方的采购协议是在胁迫下签署的商业合同。因此，甲乙双方的采购协议是可撤销的。\
+"""
+
+EXAMPLE_NL_JSONL = EXAMPLE_NL_EN_JSONL
+EXAMPLE_JSONL = EXAMPLE_FOL_JSONL
+
+#: Per-tab isolated run states ("demo", "benchmark", "custom") + legacy LAST_RUN
+RUNS_BY_TAB: Dict[str, Dict[str, Any]] = {}
 LAST_RUN: Dict[str, Any] = {}
 
 
@@ -60,10 +96,354 @@ def _new_run_dir() -> str:
     return tempfile.mkdtemp(prefix="lgmt_web_")
 
 
+def _find_full_eval_set() -> Optional[str]:
+    rel = Path("data") / "metamorphic_group" / "processed_mgs_core" / "processed_mgs_3091.jsonl"
+    candidates = [
+        Path.cwd() / rel,
+        Path(__file__).resolve().parent.parent / rel,
+    ]
+    for path in candidates:
+        if path.exists():
+            return str(path.resolve())
+    return None
+
+
+def _resolve_dataset_path(dataset_key: str) -> str:
+    if dataset_key in ("full_3091", "benchmark", "full"):
+        full_path = _find_full_eval_set()
+        if not full_path:
+            raise ValueError(
+                "Full 3,091-group benchmark file not found in data/metamorphic_group/processed_mgs_core/."
+            )
+        return full_path
+    return DEMO_MGS_PATH
+
+
+def _parse_source_cases(
+    text: str,
+    translator: Optional[FOLTranslator] = None,
+    extractor: Optional[UnstructuredExtractor] = None,
+    input_mode: str = "jsonl",
+) -> List[TestCase]:
+    """Parse user custom inputs across all supported forms into ``TestCase`` objects."""
+    raw_records: List[Dict[str, Any]] = []
+
+    if input_mode == "unstructured":
+        blocks = [b.strip() for b in text.strip().split("\n\n") if b.strip()]
+        if not blocks:
+            raise ValueError("No text found — paste at least one reasoning paragraph.")
+        for b in blocks:
+            raw_records.append({"raw_text": b, "metadata": {"label": "Unknown"}})
+    else:
+        for lineno, line in enumerate(text.splitlines(), 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"line {lineno}: invalid JSON ({e})") from e
+            if not isinstance(obj, dict):
+                raise ValueError(f"line {lineno}: expected a JSON object")
+            has_logic = bool(obj.get("premises_logic") and obj.get("conclusion_logic"))
+            has_text = bool(obj.get("premises_text") and obj.get("conclusion_text"))
+            has_raw = bool(obj.get("raw_text"))
+            if not (has_logic or has_text or has_raw):
+                raise ValueError(
+                    f"line {lineno}: each record needs ('premises_text' & 'conclusion_text'), "
+                    "('premises_logic' & 'conclusion_logic'), or 'raw_text'"
+                )
+            raw_records.append(obj)
+
+    if not raw_records:
+        raise ValueError("no test cases found — provide at least one test case")
+
+    needs_llm = False
+    for r in raw_records:
+        if r.get("premises_logic") and r.get("conclusion_logic"):
+            continue
+        pt = [str(p).strip() for p in (r.get("premises_text") or []) if str(p).strip()]
+        ct = str(r.get("conclusion_text") or "").strip()
+        if pt and ct and all(looks_like_fol(p) for p in pt) and looks_like_fol(ct):
+            continue
+        needs_llm = True
+        break
+
+    if needs_llm and translator is None:
+        raise ValueError(
+            "Natural-language or unstructured cases require a real LLM API key & model to "
+            "extract and synthesize FOL formulas. Either configure an API key & model above, "
+            "or switch to Pure FOL / Dual NL+FOL input for Offline Mock Mode."
+        )
+
+    normalized = synthesize_missing_logic(
+        raw_records, translator=translator, extractor=extractor
+    )
+    if not normalized:
+        raise ValueError(
+            "Could not construct valid NLTK FOL formulas from the provided cases. "
+            "Check your input sentences or FOL syntax."
+        )
+
+    cases: List[TestCase] = []
+    for obj in normalized:
+        premises_logic = list(obj["premises_logic"])
+        conclusion_logic = str(obj["conclusion_logic"])
+        cases.append(
+            TestCase(
+                premises_logic=premises_logic,
+                conclusion_logic=conclusion_logic,
+                premises_text=list(obj.get("premises_text") or premises_logic),
+                conclusion_text=str(obj.get("conclusion_text") or conclusion_logic),
+                metadata={
+                    **(obj.get("metadata") or {}),
+                    "label": canonical_label((obj.get("metadata") or {}).get("label")),
+                },
+            )
+        )
+    return cases
+
+
+# --------------------------------------------------------------------- #
+# core execution workflows (with per-tab state isolation)
+# --------------------------------------------------------------------- #
+def execute_demo_workflow(
+    persona: str = "flawed",
+    prompting: str = "zero_cot",
+    dataset: str = "demo_40",
+) -> Dict[str, Any]:
+    """Run Workflow 1: Offline Demo with MockLLMClient."""
+    if prompting not in PROMPTING_PRESETS:
+        prompting = "zero_cot"
+    mgs_path = _resolve_dataset_path(dataset)
+    mgs = load_metamorphic_groups(mgs_path)
+
+    out_dir = _new_run_dir()
+    results_path = os.path.join(out_dir, "results.jsonl")
+    report_path = os.path.join(out_dir, "report.html")
+
+    model_name = f"mock-{persona}"
+    run_inference(
+        mgs,
+        MockLLMClient(persona=persona),
+        model_name,
+        prompting=prompting,
+        result_save_path=results_path,
+        max_workers=8,
+        quiet=True,
+    )
+    records = load_inference_records(results_path)
+    metrics = compute_metrics(records)
+    generate_run_report(
+        records,
+        metrics,
+        report_path,
+        mgs=mgs,
+        title="LGMT Offline Demo Report",
+        model=model_name,
+        prompting=prompting,
+    )
+    body_html = render_report_body(
+        records, metrics, mgs=mgs, model=model_name, prompting=prompting
+    )
+    summary = (
+        f"Offline Demo completed: {len(records)} groups ({dataset}) · "
+        f"model={model_name} · prompting={prompting} · "
+        f"MVR={metrics['mvr'] * 100:.2f}% ({metrics['violation_count']} violations)"
+    )
+    state = {
+        "records": records,
+        "metrics": metrics,
+        "report": report_path,
+        "body_html": body_html,
+        "summary": summary,
+        "kind": f"offline demo ({persona})",
+    }
+    RUNS_BY_TAB["demo"] = state
+    LAST_RUN.update(state)
+    return state
+
+
+def execute_benchmark_workflow(
+    api_key: str,
+    base_url: str,
+    model: str,
+    dataset: str = "demo_40",
+    prompting: str = "zero_cot",
+    workers: int = 16,
+) -> Dict[str, Any]:
+    """Run Workflow 2: Benchmark an OpenAI-compatible model on bundled MGs."""
+    if not api_key or not api_key.strip():
+        raise ValueError(
+            "Please provide an API key to evaluate a real model (kept in memory only). "
+            "For a key-free run, use Tab 1: Quick Demo (Offline)."
+        )
+    if not model or not model.strip():
+        raise ValueError("Please provide a model name (e.g. gpt-4o, claude-sonnet, deepseek-chat).")
+    base_url = (base_url or "").strip() or "https://api.openai.com/v1"
+    if prompting not in PROMPTING_PRESETS:
+        prompting = "zero_cot"
+
+    mgs_path = _resolve_dataset_path(dataset)
+    mgs = load_metamorphic_groups(mgs_path)
+
+    out_dir = _new_run_dir()
+    results_path = os.path.join(out_dir, "results.jsonl")
+    report_path = os.path.join(out_dir, "report.html")
+
+    client = OpenAICompatClient(api_key=api_key.strip(), base_url=base_url)
+    model_name = model.strip()
+    run_inference(
+        mgs,
+        client,
+        model_name,
+        prompting=prompting,
+        result_save_path=results_path,
+        max_workers=max(1, min(64, int(workers or 16))),
+        quiet=True,
+    )
+    records = load_inference_records(results_path)
+    metrics = compute_metrics(records)
+    generate_run_report(
+        records,
+        metrics,
+        report_path,
+        mgs=mgs,
+        title=f"LGMT Benchmark Report — {model_name}",
+        model=model_name,
+        prompting=prompting,
+    )
+    body_html = render_report_body(
+        records, metrics, mgs=mgs, model=model_name, prompting=prompting
+    )
+    summary = (
+        f"Benchmark run completed: {len(records)} groups ({dataset}) · "
+        f"model={model_name} · prompting={prompting} · "
+        f"MVR={metrics['mvr'] * 100:.2f}% ({metrics['violation_count']} violations)"
+    )
+    state = {
+        "records": records,
+        "metrics": metrics,
+        "report": report_path,
+        "body_html": body_html,
+        "summary": summary,
+        "kind": f"benchmark ({model_name})",
+    }
+    RUNS_BY_TAB["benchmark"] = state
+    LAST_RUN.update(state)
+    return state
+
+
+def execute_custom_workflow(
+    api_key: str,
+    base_url: str,
+    model: str,
+    cases_jsonl: str,
+    categories: List[str],
+    prompting: str = "zero_cot",
+    realize: bool = False,
+    use_mock: bool = False,
+    mock_persona: str = "flawed",
+    input_mode: str = "jsonl",
+) -> Dict[str, Any]:
+    """Run Workflow 3: Normalize custom cases (Form / Unstructured / JSONL), build MGs, and test."""
+    if not categories:
+        raise ValueError("Select at least one MR category (E, S, P, C).")
+    selected = [
+        mr for mr in ALL_MRS if mr.index.split("-")[1][0].upper() in {c.upper() for c in categories}
+    ]
+    if not selected:
+        raise ValueError("No MRs matched the selected categories.")
+
+    if use_mock:
+        client = MockLLMClient(persona=mock_persona)
+        model_name = f"mock-{mock_persona}"
+        translator = None
+        extractor = None
+    else:
+        if not api_key or not api_key.strip():
+            raise ValueError(
+                "Please provide an API key (kept in memory only), or switch Execution Mode to "
+                "'Offline Mock' (supported when FOL formulas are provided)."
+            )
+        if not model or not model.strip():
+            raise ValueError("Please provide a model name (e.g. gpt-4o).")
+        base_url = (base_url or "").strip() or "https://api.openai.com/v1"
+        model_name = model.strip()
+        client = OpenAICompatClient(api_key=api_key.strip(), base_url=base_url)
+        translator = make_nl2fol_translator(client, model_name)
+        extractor = make_unstructured_extractor(client, model_name)
+
+    cases = _parse_source_cases(
+        cases_jsonl,
+        translator=translator,
+        extractor=extractor,
+        input_mode=input_mode,
+    )
+    realize_fn = make_realize_fn(client, model_name) if (realize and not use_mock) else None
+
+    mgs = build_metamorphic_groups(
+        cases, mr_list=selected, max_per_case=1, seed=42, realize_fn=realize_fn
+    )
+    if not mgs:
+        raise ValueError(
+            "No metamorphic groups could be built from the given cases with the selected MR categories."
+        )
+
+    out_dir = _new_run_dir()
+    results_path = os.path.join(out_dir, "results.jsonl")
+    report_path = os.path.join(out_dir, "report.html")
+
+    if prompting not in PROMPTING_PRESETS:
+        prompting = "zero_cot"
+    run_inference(
+        mgs,
+        client,
+        model_name,
+        prompting=prompting,
+        result_save_path=results_path,
+        max_workers=8,
+        quiet=True,
+    )
+    records = load_inference_records(results_path)
+    metrics = compute_metrics(records)
+    generate_run_report(
+        records,
+        metrics,
+        report_path,
+        mgs=mgs,
+        title=f"LGMT Custom Evaluation Report — {model_name}",
+        model=model_name,
+        prompting=prompting,
+    )
+    body_html = render_report_body(
+        records, metrics, mgs=mgs, model=model_name, prompting=prompting
+    )
+    summary = (
+        f"Custom run completed: {len(records)} MGs built from {len(cases)} source case(s) · "
+        f"model={model_name} · prompting={prompting} · "
+        f"MVR={metrics['mvr'] * 100:.2f}% ({metrics['violation_count']} violations)"
+    )
+    state = {
+        "records": records,
+        "metrics": metrics,
+        "report": report_path,
+        "body_html": body_html,
+        "summary": summary,
+        "kind": f"custom ({model_name})",
+    }
+    RUNS_BY_TAB["custom"] = state
+    LAST_RUN.update(state)
+    return state
+
+
+# --------------------------------------------------------------------- #
+# Legacy/Gradio helper wrappers (backward-compatible signatures)
+# --------------------------------------------------------------------- #
 def _metrics_rows(metrics: Dict[str, Any]) -> List[List[Any]]:
     header = ["scope", "total", "MVR", "acc_src", "acc_cons", "HDR", "FUR"]
-    rows = [header]
-    rows.append(
+    rows = [
+        header,
         [
             "ALL",
             metrics["total"],
@@ -72,16 +452,16 @@ def _metrics_rows(metrics: Dict[str, Any]) -> List[List[Any]]:
             f"{metrics['acc_cons'] * 100:.2f}%",
             f"{metrics['hdr'] * 100:.2f}%",
             f"{metrics['fur'] * 100:.2f}%",
-        ]
-    )
+        ],
+    ]
     for row in metrics.get("per_category", []):
         rows.append(
             [
                 f"category {row['key']}",
                 row["total"],
                 f"{row['mvr'] * 100:.2f}%",
-                "",
-                "",
+                f"{row['acc_static'] * 100:.2f}%",
+                f"{row['acc_cons'] * 100:.2f}%",
                 f"{row['hdr'] * 100:.2f}%",
                 f"{row['fur'] * 100:.2f}%",
             ]
@@ -109,82 +489,18 @@ def _report_iframe(report_path: str) -> str:
         content = f.read()
     return (
         f'<iframe srcdoc="{html.escape(content, quote=True)}" '
-        'style="width:100%;height:780px;border:1px solid #ddd;border-radius:6px;"></iframe>'
+        'style="width:100%;height:820px;border:1px solid #e2e8f0;border-radius:10px;"></iframe>'
     )
 
 
-# --------------------------------------------------------------------- #
-# Tab 1: offline demo
-# --------------------------------------------------------------------- #
-def run_offline_demo(persona: str, prompting: str):
-    """Run the bundled demo with a mock model; returns gr-update values."""
-    out_dir = _new_run_dir()
-    results_path = os.path.join(out_dir, "results.jsonl")
-    report_path = os.path.join(out_dir, "report.html")
-
-    mgs = load_metamorphic_groups(DEMO_MGS_PATH)
-    run_inference(
-        mgs,
-        MockLLMClient(persona=persona),
-        f"mock-{persona}",
-        prompting=prompting,
-        result_save_path=results_path,
-        max_workers=8,
-        quiet=True,
-    )
-    records = load_inference_records(results_path)
-    metrics = compute_metrics(records)
-    generate_run_report(
-        records, metrics, report_path, mgs=mgs, title="LGMT Web Demo Report"
-    )
-    LAST_RUN.update(
-        records=records, metrics=metrics, report=report_path, kind=f"offline demo ({persona})"
-    )
+def run_offline_demo(persona: str = "flawed", prompting: str = "zero_cot"):
+    state = execute_demo_workflow(persona=persona, prompting=prompting, dataset="demo_40")
     return (
-        _metrics_rows(metrics),
-        _violation_rows(records),
-        _report_iframe(report_path),
-        f"Run finished: {len(records)} groups | model=mock-{persona} | prompting={prompting}\n\n"
-        + format_metrics_table(metrics),
+        _metrics_rows(state["metrics"]),
+        _violation_rows(state["records"]),
+        _report_iframe(state["report"]),
+        state["summary"] + "\n\n" + format_metrics_table(state["metrics"]),
     )
-
-
-# --------------------------------------------------------------------- #
-# Tab 2: test your own model
-# --------------------------------------------------------------------- #
-def _parse_source_cases(text: str):
-    """Parse user-pasted JSONL into TestCase-like dicts."""
-    from lgmt.core.structure import TestCase
-
-    cases = []
-    for lineno, line in enumerate(text.splitlines(), 1):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"line {lineno}: invalid JSON ({e})") from e
-        premises_logic = obj.get("premises_logic")
-        conclusion_logic = obj.get("conclusion_logic")
-        if not premises_logic or not conclusion_logic:
-            raise ValueError(
-                f"line {lineno}: each record needs 'premises_logic' and 'conclusion_logic'"
-            )
-        cases.append(
-            TestCase(
-                premises_logic=list(premises_logic),
-                conclusion_logic=conclusion_logic,
-                premises_text=list(
-                    obj.get("premises_text") or [p for p in premises_logic]
-                ),
-                conclusion_text=obj.get("conclusion_text") or conclusion_logic,
-                metadata={"label": canonical_label((obj.get("metadata") or {}).get("label"))},
-            )
-        )
-    if not cases:
-        raise ValueError("no test cases found — paste one JSON object per line")
-    return cases
 
 
 def run_user_model(
@@ -196,213 +512,965 @@ def run_user_model(
     prompting: str,
     realize: bool,
 ):
-    """Build MGs from user cases and run them against a user-provided model."""
     empty = [["scope", "total", "MVR", "acc_src", "acc_cons", "HDR", "FUR"]]
     no_violations = [["mg_id", "mr", "ground truth", "source verdict", "follow-up verdict"]]
-
-    if not api_key.strip():
-        msg = (
-            "Please provide an API key to run a real model (it is used in memory "
-            "only and never stored or logged). For a key-free run use the "
-            "'Try Demo' tab."
-        )
-        return empty, [no_violations[0] + [""]], "", msg
-    if not model.strip():
-        return empty, [no_violations[0] + [""]], "", "Please provide a model name."
-    if not base_url.strip():
-        base_url = "https://api.openai.com/v1"
-
     try:
-        cases = _parse_source_cases(cases_jsonl)
+        state = execute_custom_workflow(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            cases_jsonl=cases_jsonl,
+            categories=categories,
+            prompting=prompting,
+            realize=realize,
+            use_mock=False,
+        )
     except ValueError as e:
         return empty, [no_violations[0] + [""]], "", f"Input error: {e}"
-
-    selected = [
-        mr for mr in ALL_MRS if mr.index.split("-")[1][0].upper() in set(categories)
-    ]
-    if not selected:
-        return empty, [no_violations[0] + [""]], "", "Select at least one MR category."
-
-    out_dir = _new_run_dir()
-    results_path = os.path.join(out_dir, "results.jsonl")
-    report_path = os.path.join(out_dir, "report.html")
-
-    client = OpenAICompatClient(api_key=api_key.strip(), base_url=base_url.strip())
-    realize_fn = make_realize_fn(client, model.strip()) if realize else None
-    mgs = build_metamorphic_groups(
-        cases, mr_list=selected, max_per_case=1, seed=42, realize_fn=realize_fn
-    )
-    if not mgs:
-        return (
-            empty,
-            [no_violations[0] + [""]],
-            "",
-            "No metamorphic groups could be built from the given cases with the "
-            "selected MR categories.",
-        )
-    run_inference(
-        mgs,
-        client,
-        model.strip(),
-        prompting=prompting,
-        result_save_path=results_path,
-        max_workers=8,
-        quiet=True,
-    )
-    records = load_inference_records(results_path)
-    metrics = compute_metrics(records)
-    generate_run_report(records, metrics, report_path, mgs=mgs, title="LGMT Run Report")
-    LAST_RUN.update(
-        records=records, metrics=metrics, report=report_path, kind=f"model {model.strip()}"
-    )
     return (
-        _metrics_rows(metrics),
-        _violation_rows(records),
-        _report_iframe(report_path),
-        f"Run finished: {len(records)} groups from {len(cases)} cases | model={model.strip()}\n\n"
-        + format_metrics_table(metrics),
+        _metrics_rows(state["metrics"]),
+        _violation_rows(state["records"]),
+        _report_iframe(state["report"]),
+        state["summary"] + "\n\n" + format_metrics_table(state["metrics"]),
     )
 
 
 # --------------------------------------------------------------------- #
-# Tab 3: browse last report
+# Zero-Dependency Native Web Studio (HTML + CSS + Raw JS)
 # --------------------------------------------------------------------- #
-def browse_last_report():
-    if not LAST_RUN:
-        empty = [["scope", "total", "MVR", "acc_src", "acc_cons", "HDR", "FUR"]]
-        return empty, "", "No run yet — use 'Try Demo' or 'Test Your Model' first."
-    return (
-        _metrics_rows(LAST_RUN["metrics"]),
-        _report_iframe(LAST_RUN["report"]),
-        f"Last run: {LAST_RUN.get('kind', '')}\n\n"
-        + format_metrics_table(LAST_RUN["metrics"]),
+_STUDIO_CSS = """
+    .studio-banner { background: linear-gradient(135deg, #17273f 0%, #243b5e 100%); color: #fff; padding: 22px 0 0; border-bottom: 1px solid #1e3250; }
+    .studio-inner { max-width: 1220px; margin: 0 auto; padding: 0 20px; }
+    .studio-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 16px; }
+    .studio-brand h1 { color: #fff; font-size: 23px; margin: 0; font-weight: 750; letter-spacing: -0.3px; }
+    .studio-brand p { color: #b9c8dc; font-size: 13.5px; margin: 4px 0 0; }
+    .studio-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+    .studio-pill { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); color: #eef4fb; font-size: 11.5px; padding: 4px 10px; border-radius: 999px; font-weight: 600; }
+
+    /* workflow tabs */
+    .wf-tabs { display: flex; gap: 6px; margin-top: 4px; overflow-x: auto; }
+    .wf-tab { background: rgba(255,255,255,0.08); color: #c7d4e6; border: 1px solid rgba(255,255,255,0.12); border-bottom: none; padding: 11px 18px; border-radius: 10px 10px 0 0; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: all 0.15s ease; display: flex; align-items: center; gap: 8px; }
+    .wf-tab:hover { background: rgba(255,255,255,0.15); color: #fff; }
+    .wf-tab.active { background: #f2f4f8; color: #17273f; border-color: #f2f4f8; }
+    .wf-step { display: inline-flex; width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,0.18); color: #fff; font-size: 11.5px; align-items: center; justify-content: center; font-weight: 700; }
+    .wf-tab.active .wf-step { background: #3a6ea5; color: #fff; }
+
+    /* control panels */
+    .wf-panel { display: none; background: #fff; border-radius: 12px; padding: 18px 22px; margin-bottom: 18px; border: 1px solid #dce3ec; box-shadow: 0 2px 5px rgba(16,24,40,0.05); }
+    .wf-panel.active { display: block; }
+    .wf-guide { background: #f4f8fc; border-left: 4px solid #3a6ea5; padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 13px; color: #2b3a4f; margin-bottom: 14px; }
+    .wf-guide b { color: #17273f; }
+    .wf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: 12px; align-items: end; }
+    .wf-field { display: flex; flex-direction: column; gap: 5px; }
+    .wf-field label { font-size: 11.5px; font-weight: 650; color: #4b5563; text-transform: uppercase; letter-spacing: 0.3px; }
+    .wf-field input[type="text"], .wf-field input[type="password"], .wf-field input[type="number"], .wf-field select, .wf-field textarea {
+        padding: 8px 11px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13.5px; font-family: inherit; background: #fff; color: #1f2937;
+    }
+    .wf-field textarea { font-family: "SFMono-Regular", Consolas, Menlo, monospace; font-size: 12.5px; line-height: 1.45; resize: vertical; }
+    .wf-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #eef1f5; }
+    .btn-primary { background: #3a6ea5; color: #fff; border: none; padding: 9px 20px; border-radius: 8px; font-size: 13.5px; font-weight: 650; cursor: pointer; transition: background 0.15s ease; }
+    .btn-primary:hover { background: #2d5988; }
+    .btn-primary:disabled { background: #94a3b8; cursor: wait; }
+    .btn-secondary { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 5px 11px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .btn-secondary:hover { background: #e2e8f0; }
+    .chk-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 6px 0; }
+    .chk-row label { font-size: 13px; color: #374151; font-weight: 500; text-transform: none; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+
+    /* Sub-tabs inside Tab 3 (Custom Case Input Modes) */
+    .sub-tabs { display: inline-flex; background: #f1f5f9; padding: 4px; border-radius: 9px; border: 1px solid #e2e8f0; margin-bottom: 12px; gap: 4px; flex-wrap: wrap; }
+    .sub-tab { border: none; background: transparent; color: #475569; padding: 7px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all 0.12s ease; }
+    .sub-tab:hover { color: #1e293b; }
+    .sub-tab.active { background: #fff; color: #17273f; box-shadow: 0 1px 2px rgba(16,24,40,0.08); }
+    .sub-pane { display: none; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; }
+    .sub-pane.active { display: block; }
+    .sub-hint { font-size: 12.5px; color: #475569; margin: 0 0 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+
+    /* Quick Form Queue */
+    .form-split { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; }
+    @media (max-width: 760px) { .form-split { grid-template-columns: 1fr; } }
+    .queue-box { margin-top: 10px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; }
+    .queue-header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+    .queue-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 8px; background: #f8fafc; border-radius: 6px; font-size: 12px; color: #1e293b; margin-bottom: 4px; border-left: 3px solid #3a6ea5; }
+    .queue-item button { border: none; background: none; color: #b91c1c; cursor: pointer; font-size: 11.5px; font-weight: 600; }
+
+    /* status bar & empty state */
+    .status-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; background: #eaf1f9; border: 1px solid #c5d9ed; color: #17273f; padding: 10px 16px; border-radius: 10px; margin-bottom: 18px; font-size: 13.5px; font-weight: 500; }
+    .status-bar.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+    .status-bar a.dl-btn { background: #fff; color: #2d5988; border: 1px solid #b6cde6; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; text-decoration: none; }
+    .status-bar a.dl-btn:hover { background: #f0f6fc; }
+    .empty-state { background: #fff; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 44px 24px; text-align: center; color: #64748b; }
+    .empty-state h3 { margin: 0 0 6px; font-size: 16px; color: #1e293b; }
+    .empty-state p { margin: 0 auto; max-width: 580px; font-size: 13.5px; line-height: 1.5; }
+"""
+
+# Raw string for Studio JS so backslashes (\n, \r) are never corrupted by Python string escaping!
+_STUDIO_JS = r"""
+var PRESETS = {};
+try { PRESETS = JSON.parse(document.getElementById('lgmt-presets').textContent); } catch (e) { PRESETS = {}; }
+
+var activeTab = 1;
+var activeCustomMode = 'form';
+
+function emptyCardHtml(title, desc){
+  return '<div class="empty-state"><h3>' + title + '</h3><p>' + desc + '</p></div>';
+}
+
+// Strictly isolated state for each of the 3 workflow tabs
+var TAB_STATE = {
+  1: {
+    tabKey: 'demo',
+    hasRun: false,
+    isError: false,
+    summary: 'Ready — click Run Offline Demo above to execute the offline pipeline.',
+    html: emptyCardHtml(
+      'No Offline Demo Run Yet',
+      'Click <b>Run Offline Demo</b> above to run the built-in mock model on the 40-group subset (or full 3,091-group benchmark) and inspect the interactive leaderboard and violation cards.'
     )
+  },
+  2: {
+    tabKey: 'benchmark',
+    hasRun: false,
+    isError: false,
+    summary: 'Ready — configure your API key and model name above, then click Run Benchmark Evaluation.',
+    html: emptyCardHtml(
+      'No Model Benchmark Run Yet',
+      'Enter an OpenAI-compatible API key and model name in Workflow 2 above and click <b>Run Benchmark Evaluation</b> to rank your model against 6 reference SOTA LLMs.'
+    )
+  },
+  3: {
+    tabKey: 'custom',
+    hasRun: false,
+    isError: false,
+    summary: 'Ready — provide your custom cases above (Form, Unstructured Text, or JSONL) and click Build MGs & Test Model.',
+    html: emptyCardHtml(
+      'No Custom Cases Evaluated Yet',
+      'Enter your own domain premises and conclusions in Workflow 3 above and click <b>Build MGs &amp; Test Model</b>. Results for your custom cases will appear strictly in this tab.'
+    )
+  }
+};
+
+function renderActiveTabState(){
+  var st = TAB_STATE[activeTab];
+  var bar = document.getElementById('status-bar');
+  var txt = document.getElementById('status-text');
+  var dlBtn = document.getElementById('dl-report-btn');
+  var host = document.getElementById('report-host');
+
+  bar.classList.toggle('error', !!st.isError);
+  txt.textContent = st.summary;
+  if (st.hasRun) {
+    dlBtn.style.display = 'inline-block';
+    dlBtn.href = '/api/download-report?tab=' + st.tabKey;
+  } else {
+    dlBtn.style.display = 'none';
+  }
+  host.innerHTML = st.html;
+  if (st.hasRun) {
+    initLgmtReport();
+  }
+}
+
+function switchTab(idx){
+  activeTab = idx;
+  [1, 2, 3].forEach(function(i){
+    document.getElementById('tab-btn-' + i).classList.toggle('active', i === idx);
+    document.getElementById('wf-panel-' + i).classList.toggle('active', i === idx);
+  });
+  renderActiveTabState();
+}
+
+// ---------------- Tab 3 Sub-Mode & Quick Form Queue ----------------
+var formQueue = [
+  {
+    premises_text: ["all x.(Man(x) -> Mortal(x))", "Man(socrates)"],
+    conclusion_text: "Mortal(socrates)",
+    metadata: {label: "True"}
+  }
+];
+
+function switchCustomMode(mode){
+  activeCustomMode = mode;
+  ['form', 'unstructured', 'jsonl'].forEach(function(m){
+    document.getElementById('sub-btn-' + m).classList.toggle('active', m === mode);
+    document.getElementById('sub-pane-' + m).classList.toggle('active', m === mode);
+  });
+}
+
+function renderFormQueue(){
+  var listEl = document.getElementById('qf-queue-list');
+  var titleEl = document.getElementById('qf-queue-title');
+  if (!listEl) return;
+  titleEl.textContent = 'Batch Queue (' + formQueue.length + ' case(s) queued — or click Run directly to use current form fields)';
+  if (!formQueue.length) {
+    listEl.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:4px 0;">Queue is empty — clicking Run will evaluate the case currently typed in the form above.</div>';
+    return;
+  }
+  var htmlStr = '';
+  formQueue.forEach(function(item, idx){
+    var pPreview = item.premises_text.join(' ; ');
+    if (pPreview.length > 75) pPreview = pPreview.slice(0, 75) + '…';
+    htmlStr += '<div class="queue-item">'
+      + '<span><b>#' + (idx + 1) + '</b> [' + esc(item.metadata.label) + '] ' + esc(pPreview) + ' &rArr; <b>' + esc(item.conclusion_text) + '</b></span>'
+      + '<button type="button" onclick="removeFormCase(' + idx + ')">✕ Remove</button>'
+      + '</div>';
+  });
+  listEl.innerHTML = htmlStr;
+}
+
+function readCurrentFormCase(){
+  var rawP = document.getElementById('qf-premises').value || '';
+  var lines = rawP.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean);
+  var conc = (document.getElementById('qf-conclusion').value || '').trim();
+  var lbl = document.getElementById('qf-label').value || 'Unknown';
+  if (!lines.length || !conc) return null;
+  return {
+    premises_text: lines,
+    conclusion_text: conc,
+    metadata: {label: lbl}
+  };
+}
+
+function addFormCaseToQueue(){
+  var item = readCurrentFormCase();
+  if (!item) {
+    alert('Please enter at least one premise line and a conclusion.');
+    return;
+  }
+  formQueue.push(item);
+  renderFormQueue();
+}
+
+function removeFormCase(idx){
+  formQueue.splice(idx, 1);
+  renderFormQueue();
+}
+
+function clearFormQueue(){
+  formQueue = [];
+  renderFormQueue();
+}
+
+function fillQuickForm(kind){
+  if (kind === 'en') {
+    document.getElementById('qf-premises').value = "Every patient who takes the medication recovers within a week.\nAlice takes the medication.";
+    document.getElementById('qf-conclusion').value = "Alice recovers within a week.";
+    document.getElementById('qf-label').value = "True";
+    document.getElementById('c-exec-mode').value = "api";
+  } else if (kind === 'zh') {
+    document.getElementById('qf-premises').value = "所有在胁迫下签署的合同都是可撤销的。\nSmith合同是在胁迫下签署的。";
+    document.getElementById('qf-conclusion').value = "Smith合同是可撤销的。";
+    document.getElementById('qf-label').value = "True";
+    document.getElementById('c-exec-mode').value = "api";
+  } else {
+    document.getElementById('qf-premises').value = "all x.(Bird(x) -> Fly(x))\nBird(tweety)";
+    document.getElementById('qf-conclusion').value = "Fly(tweety)";
+    document.getElementById('qf-label').value = "True";
+  }
+  toggleCustomExecMode();
+  var c = readCurrentFormCase();
+  if (c) { formQueue = [c]; renderFormQueue(); }
+}
+
+function loadUnstructuredPreset(lang){
+  document.getElementById('c-unstructured').value = (lang === 'zh') ? PRESETS.unstructured_zh : PRESETS.unstructured_en;
+  document.getElementById('c-exec-mode').value = 'api';
+  toggleCustomExecMode();
+}
+
+function loadJsonlPreset(key){
+  document.getElementById('c-cases').value = PRESETS[key] || PRESETS.dual_fol;
+  if (key === 'nl_en' || key === 'nl_zh') {
+    document.getElementById('c-exec-mode').value = 'api';
+    toggleCustomExecMode();
+  }
+}
+
+function handleFileUpload(input){
+  if (!input.files || !input.files[0]) return;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    document.getElementById('c-cases').value = e.target.result || '';
+  };
+  reader.readAsText(input.files[0], 'UTF-8');
+}
+
+function toggleCustomExecMode(){
+  var isMock = document.getElementById('c-exec-mode').value === 'mock';
+  document.getElementById('c-key-wrap').style.opacity = isMock ? '0.45' : '1';
+  document.getElementById('c-url-wrap').style.opacity = isMock ? '0.45' : '1';
+  document.getElementById('c-model-wrap').style.opacity = isMock ? '0.45' : '1';
+  document.getElementById('c-realize-wrap').style.opacity = isMock ? '0.45' : '1';
+}
+
+// ---------------- API Dispatch (Strictly Scoped to Tab) ----------------
+function postTabApi(tabIdx, url, payload, btnId){
+  var btn = document.getElementById(btnId);
+  var oldLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  TAB_STATE[tabIdx].isError = false;
+  TAB_STATE[tabIdx].summary = 'Running pipeline… please wait.';
+  if (activeTab === tabIdx) renderActiveTabState();
+
+  fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  })
+  .then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
+  .then(function(res){
+    btn.disabled = false;
+    btn.textContent = oldLabel;
+    if (!res.ok || res.data.error) {
+      TAB_STATE[tabIdx].isError = true;
+      TAB_STATE[tabIdx].summary = res.data.error || 'Run failed.';
+      if (activeTab === tabIdx) renderActiveTabState();
+      return;
+    }
+    TAB_STATE[tabIdx].isError = false;
+    TAB_STATE[tabIdx].hasRun = true;
+    TAB_STATE[tabIdx].summary = res.data.summary;
+    TAB_STATE[tabIdx].html = res.data.body_html;
+    if (activeTab === tabIdx) renderActiveTabState();
+  })
+  .catch(function(err){
+    btn.disabled = false;
+    btn.textContent = oldLabel;
+    TAB_STATE[tabIdx].isError = true;
+    TAB_STATE[tabIdx].summary = 'Request error: ' + err;
+    if (activeTab === tabIdx) renderActiveTabState();
+  });
+}
+
+function runDemo(){
+  postTabApi(1, '/api/demo', {
+    persona: document.getElementById('d-persona').value,
+    dataset: document.getElementById('d-dataset').value,
+    prompting: document.getElementById('d-prompting').value
+  }, 'btn-run-demo');
+}
+
+function runBenchmark(){
+  postTabApi(2, '/api/benchmark', {
+    api_key: document.getElementById('b-key').value,
+    base_url: document.getElementById('b-url').value,
+    model: document.getElementById('b-model').value,
+    dataset: document.getElementById('b-dataset').value,
+    prompting: document.getElementById('b-prompting').value,
+    workers: parseInt(document.getElementById('b-workers').value || '16', 10)
+  }, 'btn-run-bench');
+}
+
+function runCustom(){
+  var cats = [];
+  document.querySelectorAll('.c-cat:checked').forEach(function(el){ cats.push(el.value); });
+  var isMock = document.getElementById('c-exec-mode').value === 'mock';
+  var payloadText = '';
+  var inputMode = 'jsonl';
+
+  if (activeCustomMode === 'form') {
+    var items = formQueue.slice();
+    var current = readCurrentFormCase();
+    if (!items.length && current) {
+      items.push(current);
+    } else if (current) {
+      var sig = JSON.stringify(current);
+      var exists = items.some(function(x){ return JSON.stringify(x) === sig; });
+      if (!exists) items.push(current);
+    }
+    if (!items.length) {
+      TAB_STATE[3].isError = true;
+      TAB_STATE[3].summary = 'Please enter premises and a conclusion in the Quick Form.';
+      renderActiveTabState();
+      return;
+    }
+    payloadText = items.map(function(x){ return JSON.stringify(x); }).join('\n');
+    inputMode = 'jsonl';
+  } else if (activeCustomMode === 'unstructured') {
+    payloadText = document.getElementById('c-unstructured').value || '';
+    inputMode = 'unstructured';
+  } else {
+    payloadText = document.getElementById('c-cases').value || '';
+    inputMode = 'jsonl';
+  }
+
+  postTabApi(3, '/api/custom', {
+    api_key: document.getElementById('c-key').value,
+    base_url: document.getElementById('c-url').value,
+    model: document.getElementById('c-model').value,
+    prompting: document.getElementById('c-prompting').value,
+    categories: cats,
+    realize: document.getElementById('c-realize').checked,
+    use_mock: isMock,
+    input_mode: inputMode,
+    cases_jsonl: payloadText
+  }, 'btn-run-custom');
+}
+
+window.addEventListener('DOMContentLoaded', function(){
+  renderFormQueue();
+  renderActiveTabState();
+});
+"""
 
 
-def last_violations():
-    if not LAST_RUN:
-        return [["mg_id", "mr", "ground truth", "source verdict", "follow-up verdict"]]
-    return _violation_rows(LAST_RUN["records"])
+def _render_studio_page() -> str:
+    presets_json = json.dumps(
+        {
+            "nl_en": EXAMPLE_NL_EN_JSONL,
+            "nl_zh": EXAMPLE_NL_ZH_JSONL,
+            "pure_fol": EXAMPLE_PURE_FOL_JSONL,
+            "dual_fol": EXAMPLE_FOL_JSONL,
+            "unstructured_en": EXAMPLE_UNSTRUCTURED_EN,
+            "unstructured_zh": EXAMPLE_UNSTRUCTURED_ZH,
+        },
+        ensure_ascii=False,
+    ).replace("</", "<\\/")
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LGMT Web Studio — Logic-Grounded Metamorphic Testing</title>
+    <style>{REPORT_CSS}\n{_STUDIO_CSS}</style>
+</head>
+<body>
+    <header class="studio-banner">
+        <div class="studio-inner">
+            <div class="studio-top">
+                <div class="studio-brand">
+                    <h1>LGMT — Logic-Grounded Metamorphic Testing Studio</h1>
+                    <p>Rewrite logical reasoning problems into provably equivalent FOL variants, query any LLM, and audit self-contradictions.</p>
+                </div>
+                <div class="studio-badges">
+                    <span class="studio-pill">20 FOL Metamorphic Relations</span>
+                    <span class="studio-pill">Z3-Verified AST Rewriting</span>
+                    <span class="studio-pill">3,091-Group Benchmark</span>
+                </div>
+            </div>
+            <nav class="wf-tabs">
+                <button class="wf-tab active" onclick="switchTab(1)" id="tab-btn-1">
+                    <span class="wf-step">1</span> Quick Demo (Offline)
+                </button>
+                <button class="wf-tab" onclick="switchTab(2)" id="tab-btn-2">
+                    <span class="wf-step">2</span> Benchmark Your Model
+                </button>
+                <button class="wf-tab" onclick="switchTab(3)" id="tab-btn-3">
+                    <span class="wf-step">3</span> Test Custom Cases
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <div class="container" style="padding-top: 20px;">
+        <!-- ==================== Workflow 1: Offline Demo ==================== -->
+        <section class="wf-panel active" id="wf-panel-1">
+            <div class="wf-guide">
+                <b>Workflow 1 · Zero-Configuration Offline Tour:</b> No API key or network needed. Runs LGMT's built-in deterministic mock model (<i>flawed</i> intentionally contradicts itself on equivalence &amp; premise transformations; <i>consistent</i> is invariant) and ranks it against 6 reference SOTA LLMs.
+            </div>
+            <div class="wf-grid">
+                <div class="wf-field">
+                    <label>Mock Persona</label>
+                    <select id="d-persona">
+                        <option value="flawed" selected>flawed (simulates reasoning defects)</option>
+                        <option value="consistent">consistent (0% violation baseline)</option>
+                    </select>
+                </div>
+                <div class="wf-field">
+                    <label>Bundled Dataset</label>
+                    <select id="d-dataset">
+                        <option value="demo_40" selected>Demo subset (40 FOLIO groups · instant)</option>
+                        <option value="full_3091">Full benchmark (3,091 groups · ~2s)</option>
+                    </select>
+                </div>
+                <div class="wf-field">
+                    <label>Prompting Strategy</label>
+                    <select id="d-prompting">
+                        <option value="zero_cot" selected>zero_cot (Zero-shot CoT · matches reference)</option>
+                        <option value="zero_direct">zero_direct (Zero-shot Direct)</option>
+                        <option value="few_cot">few_cot (Few-shot CoT)</option>
+                        <option value="few_direct">few_direct (Few-shot Direct)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="wf-actions">
+                <button class="btn-primary" id="btn-run-demo" onclick="runDemo()">Run Offline Demo</button>
+                <span style="font-size:12.5px;color:#6b7280;">CLI equivalent: <code>lgmt demo</code> or <code>lgmt demo --full</code></span>
+            </div>
+        </section>
+
+        <!-- ==================== Workflow 2: Benchmark Your Model ==================== -->
+        <section class="wf-panel" id="wf-panel-2">
+            <div class="wf-guide">
+                <b>Workflow 2 · Evaluate an LLM on the Bundled Benchmark:</b> Point LGMT at any OpenAI-compatible endpoint (commercial API or local vLLM / Ollama server). Your API key is held in memory for this request only and never stored.
+            </div>
+            <div class="wf-grid">
+                <div class="wf-field">
+                    <label>API Key (in-memory only)</label>
+                    <input type="password" id="b-key" placeholder="sk-...">
+                </div>
+                <div class="wf-field">
+                    <label>Base URL</label>
+                    <input type="text" id="b-url" value="https://api.openai.com/v1">
+                </div>
+                <div class="wf-field">
+                    <label>Model Name</label>
+                    <input type="text" id="b-model" placeholder="gpt-4o / deepseek-chat / llama-3.3-70b">
+                </div>
+                <div class="wf-field">
+                    <label>Benchmark Scope</label>
+                    <select id="b-dataset">
+                        <option value="demo_40" selected>Demo subset (40 groups · 80 API calls)</option>
+                        <option value="full_3091">Full benchmark (3,091 groups · 6,182 API calls)</option>
+                    </select>
+                </div>
+                <div class="wf-field">
+                    <label>Prompting Strategy</label>
+                    <select id="b-prompting">
+                        <option value="zero_cot" selected>zero_cot (matches reference leaderboard)</option>
+                        <option value="zero_direct">zero_direct</option>
+                        <option value="few_cot">few_cot</option>
+                        <option value="few_direct">few_direct</option>
+                    </select>
+                </div>
+                <div class="wf-field">
+                    <label>Workers</label>
+                    <input type="number" id="b-workers" value="16" min="1" max="64">
+                </div>
+            </div>
+            <div class="wf-actions">
+                <button class="btn-primary" id="btn-run-bench" onclick="runBenchmark()">Run Benchmark Evaluation</button>
+                <span style="font-size:12.5px;color:#6b7280;">CLI equivalent: <code>lgmt run --mgs benchmark --model &lt;name&gt; --output results.jsonl</code></span>
+            </div>
+        </section>
+
+        <!-- ==================== Workflow 3: Test Custom Cases ==================== -->
+        <section class="wf-panel" id="wf-panel-3">
+            <div class="wf-guide">
+                <b>Workflow 3 · Test Your Own Domain Cases:</b> Choose how you want to provide your cases below — <b>Quick Form</b> (no JSON needed), <b>Unstructured Paragraph</b> (auto-extracted), or <b>Batch JSONL / File Upload</b>. Supports English, Chinese (中文), Pure FOL formulas, and Dual NL+FOL.
+            </div>
+
+            <div class="sub-tabs">
+                <button type="button" class="sub-tab active" id="sub-btn-form" onclick="switchCustomMode('form')">
+                    📝 Mode A: Quick Form (Interactive)
+                </button>
+                <button type="button" class="sub-tab" id="sub-btn-unstructured" onclick="switchCustomMode('unstructured')">
+                    💬 Mode B: Unstructured Paragraph (Auto-Split)
+                </button>
+                <button type="button" class="sub-tab" id="sub-btn-jsonl" onclick="switchCustomMode('jsonl')">
+                    📄 Mode C: Batch JSONL / File Upload
+                </button>
+            </div>
+
+            <div class="sub-pane active" id="sub-pane-form">
+                <div class="sub-hint">
+                    <span>Type premises (one per line) and a conclusion in <b>English, 中文, or FOL syntax</b> — no JSON formatting needed.</span>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button type="button" class="btn-secondary" onclick="fillQuickForm('en')">Example: English NL</button>
+                        <button type="button" class="btn-secondary" onclick="fillQuickForm('zh')">Example: 中文自然语言</button>
+                        <button type="button" class="btn-secondary" onclick="fillQuickForm('fol')">Example: Pure FOL (Offline-ready)</button>
+                    </div>
+                </div>
+                <div class="form-split">
+                    <div class="wf-field">
+                        <label>Premises (One sentence or FOL formula per line)</label>
+                        <textarea id="qf-premises" rows="3" placeholder="All birds can fly.&#10;Tweety is a bird.">all x.(Man(x) -> Mortal(x))
+Man(socrates)</textarea>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                        <div class="wf-field">
+                            <label>Conclusion (Single statement or FOL formula)</label>
+                            <input type="text" id="qf-conclusion" value="Mortal(socrates)" placeholder="Tweety can fly.">
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:end;">
+                            <div class="wf-field" style="flex:1;">
+                                <label>Expected Label (Optional)</label>
+                                <select id="qf-label">
+                                    <option value="True" selected>True (Entailed)</option>
+                                    <option value="False">False (Contradicted)</option>
+                                    <option value="Unknown">Unknown / Unlabeled (Consistency check only)</option>
+                                </select>
+                            </div>
+                            <button type="button" class="btn-secondary" style="height:36px;padding:0 14px;" onclick="addFormCaseToQueue()">+ Add to Batch</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="queue-box">
+                    <div class="queue-header">
+                        <span id="qf-queue-title">Batch Queue (1 case ready — or edit the fields above and click Run directly)</span>
+                        <button type="button" class="btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="clearFormQueue()">Clear Batch</button>
+                    </div>
+                    <div id="qf-queue-list"></div>
+                </div>
+            </div>
+
+            <div class="sub-pane" id="sub-pane-unstructured">
+                <div class="sub-hint">
+                    <span>Paste one or more unstructured reasoning paragraphs (separated by a blank line). LGMT will automatically extract the premises and conclusion and synthesize FOL.</span>
+                    <div style="display:flex;gap:6px;">
+                        <button type="button" class="btn-secondary" onclick="loadUnstructuredPreset('en')">Load English Paragraphs</button>
+                        <button type="button" class="btn-secondary" onclick="loadUnstructuredPreset('zh')">Load 中文业务段落</button>
+                    </div>
+                </div>
+                <div class="wf-field">
+                    <textarea id="c-unstructured" rows="6">{html.escape(EXAMPLE_UNSTRUCTURED_EN)}</textarea>
+                </div>
+            </div>
+
+            <div class="sub-pane" id="sub-pane-jsonl">
+                <div class="sub-hint">
+                    <span>Upload a <code>.jsonl</code> file or paste JSON objects (one per line). Supports Pure NL (English/中文), Pure FOL, or Dual NL+FOL.</span>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                        <label class="btn-secondary" style="cursor:pointer;margin:0;">
+                            📂 Upload .jsonl File <input type="file" accept=".jsonl,.json,.txt" style="display:none;" onchange="handleFileUpload(this)">
+                        </label>
+                        <button type="button" class="btn-secondary" onclick="loadJsonlPreset('nl_en')">English NL</button>
+                        <button type="button" class="btn-secondary" onclick="loadJsonlPreset('nl_zh')">中文 NL</button>
+                        <button type="button" class="btn-secondary" onclick="loadJsonlPreset('pure_fol')">Pure FOL</button>
+                        <button type="button" class="btn-secondary" onclick="loadJsonlPreset('dual_fol')">Dual NL+FOL</button>
+                    </div>
+                </div>
+                <div class="wf-field">
+                    <textarea id="c-cases" rows="5">{html.escape(EXAMPLE_FOL_JSONL)}</textarea>
+                </div>
+            </div>
+
+            <div class="wf-grid" style="margin-top:14px;">
+                <div class="wf-field">
+                    <label>Execution Mode</label>
+                    <select id="c-exec-mode" onchange="toggleCustomExecMode()">
+                        <option value="api" selected>Real LLM API (supports NL, 中文, Unstructured &amp; FOL)</option>
+                        <option value="mock">Offline Mock Mode (instant, requires FOL formulas)</option>
+                    </select>
+                </div>
+                <div class="wf-field" id="c-key-wrap">
+                    <label>API Key (in-memory only)</label>
+                    <input type="password" id="c-key" placeholder="sk-...">
+                </div>
+                <div class="wf-field" id="c-url-wrap">
+                    <label>Base URL</label>
+                    <input type="text" id="c-url" value="https://api.openai.com/v1">
+                </div>
+                <div class="wf-field" id="c-model-wrap">
+                    <label>Model Name</label>
+                    <input type="text" id="c-model" placeholder="gpt-4o / deepseek-chat">
+                </div>
+                <div class="wf-field">
+                    <label>Prompting Strategy</label>
+                    <select id="c-prompting">
+                        <option value="zero_cot" selected>zero_cot</option>
+                        <option value="zero_direct">zero_direct</option>
+                        <option value="few_cot">few_cot</option>
+                        <option value="few_direct">few_direct</option>
+                    </select>
+                </div>
+            </div>
+            <div class="chk-row" style="margin-top:8px;">
+                <span style="font-size:12px;font-weight:700;color:#4b5563;text-transform:uppercase;">MR Categories:</span>
+                <label><input type="checkbox" class="c-cat" value="E" checked> E (Formula Equivalence ×10)</label>
+                <label><input type="checkbox" class="c-cat" value="S" checked> S (Symbol Renaming ×2)</label>
+                <label><input type="checkbox" class="c-cat" value="P" checked> P (Premise Restructuring ×5)</label>
+                <label><input type="checkbox" class="c-cat" value="C" checked> C (Conclusion Variation ×3)</label>
+                <span style="margin-left:10px;color:#cbd5e1;">|</span>
+                <label id="c-realize-wrap"><input type="checkbox" id="c-realize" checked> LLM Logic→NL Realization (preserves English/中文)</label>
+            </div>
+
+            <div class="wf-actions">
+                <button class="btn-primary" id="btn-run-custom" onclick="runCustom()">Build MGs &amp; Test Model</button>
+                <span style="font-size:12.5px;color:#6b7280;">CLI equivalent: <code>lgmt build-mgs --input my_cases.jsonl --output my_mgs.jsonl</code> → <code>lgmt run</code></span>
+            </div>
+        </section>
+
+        <!-- Per-Tab Isolated Status Bar & Report Host -->
+        <div class="status-bar" id="status-bar">
+            <span id="status-text">Ready — click Run Offline Demo above to start.</span>
+            <a class="dl-btn" id="dl-report-btn" href="/api/download-report?tab=demo" target="_blank" style="display:none;">Download Standalone HTML Report</a>
+        </div>
+
+        <div id="report-host"></div>
+    </div>
+
+    <footer>
+        LGMT · <a href="https://github.com/MaxwelsDonc/lgmt-tool">GitHub</a> ·
+        Companion study: Knowledge-Based Systems (2026), in press ·
+        Reference metrics: {html.escape(REFERENCE_SNAPSHOT)}
+    </footer>
+
+    <script type="application/json" id="lgmt-presets">{presets_json}</script>
+    <script>{REPORT_JS}</script>
+    <script>{_STUDIO_JS}</script>
+</body>
+</html>"""
+
+
+class _StudioHandler(BaseHTTPRequestHandler):
+    def log_message(self, format: str, *args: Any) -> None:
+        return  # keep console clean
+
+    def _send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
+        raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def _send_html(self, html_str: str, status: int = 200, filename: Optional[str] = None) -> None:
+        raw = html_str.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        if filename:
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path in ("/", "/index.html"):
+            self._send_html(_render_studio_page())
+            return
+        if parsed.path == "/api/download-report":
+            qs = parse_qs(parsed.query)
+            tab_key = (qs.get("tab") or [""])[0]
+            target = RUNS_BY_TAB.get(tab_key) or LAST_RUN
+            if not target or not os.path.exists(target.get("report", "")):
+                self.send_error(404, "No report has been generated for this tab yet. Run the workflow first.")
+                return
+            with open(target["report"], "r", encoding="utf-8") as f:
+                self._send_html(f.read(), filename=f"lgmt_{tab_key or 'run'}_report.html")
+            return
+        self.send_error(404, "Not Found")
+
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+        try:
+            data = json.loads(body)
+        except Exception:
+            self._send_json({"error": "Invalid JSON request body."}, status=400)
+            return
+
+        try:
+            if parsed.path == "/api/demo":
+                state = execute_demo_workflow(
+                    persona=data.get("persona", "flawed"),
+                    prompting=data.get("prompting", "zero_cot"),
+                    dataset=data.get("dataset", "demo_40"),
+                )
+            elif parsed.path == "/api/benchmark":
+                state = execute_benchmark_workflow(
+                    api_key=data.get("api_key", ""),
+                    base_url=data.get("base_url", ""),
+                    model=data.get("model", ""),
+                    dataset=data.get("dataset", "demo_40"),
+                    prompting=data.get("prompting", "zero_cot"),
+                    workers=int(data.get("workers", 16)),
+                )
+            elif parsed.path == "/api/custom":
+                state = execute_custom_workflow(
+                    api_key=data.get("api_key", ""),
+                    base_url=data.get("base_url", ""),
+                    model=data.get("model", ""),
+                    cases_jsonl=data.get("cases_jsonl", ""),
+                    categories=data.get("categories") or ["E", "S", "P", "C"],
+                    prompting=data.get("prompting", "zero_cot"),
+                    realize=bool(data.get("realize", False)),
+                    use_mock=bool(data.get("use_mock", False)),
+                    input_mode=data.get("input_mode", "jsonl"),
+                )
+            else:
+                self._send_json({"error": f"Unknown endpoint {parsed.path}"}, status=404)
+                return
+            self._send_json({"summary": state["summary"], "body_html": state["body_html"]})
+        except Exception as e:
+            self._send_json({"error": str(e)}, status=400)
 
 
 # --------------------------------------------------------------------- #
-# Gradio app (lazy import)
+# Gradio app adapter (for Hugging Face Gradio Spaces compatibility)
 # --------------------------------------------------------------------- #
 def build_app():
+    """Build the Gradio Blocks app (used by `spaces/app.py` or `--gradio`)."""
     try:
         import gradio as gr
     except ImportError as e:  # pragma: no cover
         raise SystemExit(
-            "gradio is required for the web demo: pip install -r requirements-web.txt"
+            "gradio is required for `--gradio` mode: pip install -r requirements-web.txt "
+            "(or omit `--gradio` to run the zero-dependency built-in Web Studio)."
         ) from e
 
     prompting_choices = sorted(PROMPTING_PRESETS.keys())
     category_choices = ["E", "S", "P", "C"]
-    empty_metrics = [["scope", "total", "MVR", "acc_src", "acc_cons", "HDR", "FUR"]]
-    empty_violations = [["mg_id", "mr", "ground truth", "source verdict", "follow-up verdict"]]
+
+    def _gr_demo(persona: str, dataset: str, prompting: str):
+        state = execute_demo_workflow(persona=persona, prompting=prompting, dataset=dataset)
+        return state["summary"], _report_iframe(state["report"])
+
+    def _gr_bench(api_key: str, base_url: str, model: str, dataset: str, prompting: str):
+        try:
+            state = execute_benchmark_workflow(
+                api_key=api_key,
+                base_url=base_url,
+                model=model,
+                dataset=dataset,
+                prompting=prompting,
+            )
+            return state["summary"], _report_iframe(state["report"])
+        except Exception as e:
+            return f"Error: {e}", ""
+
+    def _gr_custom(
+        api_key: str,
+        base_url: str,
+        model: str,
+        input_mode_label: str,
+        cases_text: str,
+        categories: List[str],
+        prompting: str,
+        realize: bool,
+        use_mock: bool,
+    ):
+        mode = "unstructured" if "Unstructured" in (input_mode_label or "") else "jsonl"
+        try:
+            state = execute_custom_workflow(
+                api_key=api_key,
+                base_url=base_url,
+                model=model,
+                cases_jsonl=cases_text,
+                categories=categories,
+                prompting=prompting,
+                realize=realize,
+                use_mock=use_mock,
+                input_mode=mode,
+            )
+            return state["summary"], _report_iframe(state["report"])
+        except Exception as e:
+            return f"Error: {e}", ""
 
     with gr.Blocks(title="LGMT — Logic-Grounded Metamorphic Testing") as app:
         gr.Markdown(
-            "# LGMT — Logic-Grounded Metamorphic Testing\n"
-            "Evaluate LLM logical-reasoning reliability with first-order-logic "
-            "metamorphic relations. The **Try Demo** tab runs fully offline with a "
-            "mock model; **Test Your Model** uses your own API key (kept in memory "
-            "only, never stored or logged)."
+            "# LGMT — Logic-Grounded Metamorphic Testing Studio\n"
+            "Choose a workflow tab below: **1. Quick Demo (Offline)** (no API key needed), "
+            "**2. Benchmark Your Model** (on bundled 40 or 3,091 groups), or "
+            "**3. Test Custom Cases** (supports pure natural language in English/中文, unstructured text, pure FOL, or dual NL+FOL)."
         )
 
-        # ---------------- Tab 1: offline demo ---------------- #
-        with gr.Tab("Try Demo"):
+        with gr.Tab("1. Quick Demo (Offline)"):
             with gr.Row():
                 persona = gr.Dropdown(
                     choices=["flawed", "consistent"], value="flawed", label="Mock persona"
                 )
+                dataset1 = gr.Dropdown(
+                    choices=["demo_40", "full_3091"], value="demo_40", label="Bundled dataset"
+                )
                 prompting1 = gr.Dropdown(
-                    choices=prompting_choices, value="zero_direct", label="Prompting"
+                    choices=prompting_choices, value="zero_cot", label="Prompting"
                 )
-            run_btn = gr.Button("Run offline demo (40 bundled groups)", variant="primary")
-            status1 = gr.Textbox(label="Status / metrics", lines=8, interactive=False)
-            with gr.Row():
-                metrics1 = gr.Dataframe(value=empty_metrics, label="Metrics", interactive=False)
-                violations1 = gr.Dataframe(
-                    value=empty_violations, label="Violations", interactive=False
-                )
-            report1 = gr.HTML(label="HTML report")
-            run_btn.click(
-                run_offline_demo,
-                inputs=[persona, prompting1],
-                outputs=[metrics1, violations1, report1, status1],
+            run_btn1 = gr.Button("Run Offline Demo", variant="primary")
+            status1 = gr.Textbox(
+                label="Run Summary",
+                value="Ready — click 'Run Offline Demo' above to start.",
+                interactive=False,
+            )
+            report1 = gr.HTML(label="Interactive Report")
+            run_btn1.click(
+                _gr_demo,
+                inputs=[persona, dataset1, prompting1],
+                outputs=[status1, report1],
             )
 
-        # ---------------- Tab 2: user's model ---------------- #
-        with gr.Tab("Test Your Model"):
-            gr.Markdown(
-                "Provide an OpenAI-compatible endpoint and your own key. "
-                "Paste source cases as JSONL (one object per line, see the example). "
-                "If the key field is empty, the run is refused with a hint."
-            )
+        with gr.Tab("2. Benchmark Your Model"):
             with gr.Row():
-                api_key = gr.Textbox(
-                    label="API key", type="password", placeholder="sk-..."
-                )
-                base_url = gr.Textbox(
-                    label="Base URL", value="https://api.openai.com/v1"
-                )
-                model = gr.Textbox(label="Model", placeholder="gpt-4o")
+                api_key2 = gr.Textbox(label="API key (in-memory only)", type="password", placeholder="sk-...")
+                base_url2 = gr.Textbox(label="Base URL", value="https://api.openai.com/v1")
+                model2 = gr.Textbox(label="Model", placeholder="gpt-4o")
             with gr.Row():
-                categories = gr.CheckboxGroup(
-                    choices=category_choices, value=category_choices, label="MR categories"
+                dataset2 = gr.Dropdown(
+                    choices=["demo_40", "full_3091"], value="demo_40", label="Benchmark scope"
                 )
                 prompting2 = gr.Dropdown(
-                    choices=prompting_choices, value="zero_direct", label="Prompting"
+                    choices=prompting_choices, value="zero_cot", label="Prompting"
                 )
-                realize = gr.Checkbox(
-                    value=False,
-                    label="LLM Logic→NL realize (extra calls; otherwise FOL skeleton)",
-                )
-            cases_box = gr.Textbox(
-                label="Source cases (JSONL)",
-                value=EXAMPLE_JSONL,
-                lines=10,
-                max_lines=20,
-            )
-            run_btn2 = gr.Button("Build MGs and run", variant="primary")
-            status2 = gr.Textbox(label="Status / metrics", lines=8, interactive=False)
-            with gr.Row():
-                metrics2 = gr.Dataframe(value=empty_metrics, label="Metrics", interactive=False)
-                violations2 = gr.Dataframe(
-                    value=empty_violations, label="Violations", interactive=False
-                )
-            report2 = gr.HTML(label="HTML report")
+            run_btn2 = gr.Button("Run Benchmark Evaluation", variant="primary")
+            status2 = gr.Textbox(label="Run Summary", interactive=False)
+            report2 = gr.HTML(label="Interactive Report")
             run_btn2.click(
-                run_user_model,
-                inputs=[api_key, base_url, model, cases_box, categories, prompting2, realize],
-                outputs=[metrics2, violations2, report2, status2],
+                _gr_bench,
+                inputs=[api_key2, base_url2, model2, dataset2, prompting2],
+                outputs=[status2, report2],
             )
 
-        # ---------------- Tab 3: browse ---------------- #
-        with gr.Tab("Browse Report"):
-            refresh = gr.Button("Load last run")
-            status3 = gr.Textbox(label="Last run", lines=8, interactive=False)
+        with gr.Tab("3. Test Custom Cases"):
             with gr.Row():
-                metrics3 = gr.Dataframe(value=empty_metrics, label="Metrics", interactive=False)
-                violations3 = gr.Dataframe(
-                    value=empty_violations, label="Violations", interactive=False
+                api_key3 = gr.Textbox(label="API key", type="password", placeholder="sk-...")
+                base_url3 = gr.Textbox(label="Base URL", value="https://api.openai.com/v1")
+                model3 = gr.Textbox(label="Model", placeholder="gpt-4o")
+            with gr.Row():
+                input_mode3 = gr.Radio(
+                    choices=["JSONL (Pure NL / Pure FOL / Dual NL+FOL)", "Unstructured Paragraph (Auto-Extract)"],
+                    value="JSONL (Pure NL / Pure FOL / Dual NL+FOL)",
+                    label="Input format",
                 )
-            report3 = gr.HTML(label="HTML report")
-            refresh.click(browse_last_report, outputs=[metrics3, report3, status3])
-            refresh.click(last_violations, outputs=[violations3])
+                categories3 = gr.CheckboxGroup(
+                    choices=category_choices, value=category_choices, label="MR categories"
+                )
+                prompting3 = gr.Dropdown(
+                    choices=prompting_choices, value="zero_cot", label="Prompting"
+                )
+                realize3 = gr.Checkbox(value=True, label="LLM Logic→NL Realize")
+                use_mock3 = gr.Checkbox(value=False, label="Offline Mock Mode (requires FOL)")
+            cases_box3 = gr.Textbox(
+                label="Source cases",
+                value=EXAMPLE_NL_EN_JSONL,
+                lines=6,
+                max_lines=16,
+            )
+            run_btn3 = gr.Button("Build MGs & Test Model", variant="primary")
+            status3 = gr.Textbox(label="Run Summary", interactive=False)
+            report3 = gr.HTML(label="Interactive Report")
+            run_btn3.click(
+                _gr_custom,
+                inputs=[api_key3, base_url3, model3, input_mode3, cases_box3, categories3, prompting3, realize3, use_mock3],
+                outputs=[status3, report3],
+            )
 
     return app
 
 
-def main() -> None:
+def launch_server(host: str = "0.0.0.0", port: int = 7860, use_gradio: bool = False) -> None:
+    """Launch either the built-in zero-dependency Web Studio or the Gradio wrapper."""
+    if use_gradio:
+        build_app().launch(server_name=host, server_port=port)
+        return
+
+    server = ThreadingHTTPServer((host, port), _StudioHandler)
+    display_host = "localhost" if host in ("0.0.0.0", "127.0.0.1") else host
+    print(f"LGMT Web Studio running at http://{display_host}:{port} (Ctrl+C to stop)")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down LGMT Web Studio.")
+    finally:
+        server.server_close()
+
+
+def main(argv: Optional[List[str]] = None) -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(description="LGMT Gradio web demo")
+    parser = argparse.ArgumentParser(description="LGMT Interactive Web Studio")
     parser.add_argument("--port", type=int, default=7860)
     parser.add_argument("--host", default="0.0.0.0")
-    args = parser.parse_args()
-    build_app().launch(server_name=args.host, server_port=args.port)
+    parser.add_argument(
+        "--gradio",
+        action="store_true",
+        help="Use the Gradio UI wrapper instead of the built-in zero-dependency Web Studio.",
+    )
+    args = parser.parse_args(argv)
+    launch_server(host=args.host, port=args.port, use_gradio=args.gradio)
 
 
 if __name__ == "__main__":

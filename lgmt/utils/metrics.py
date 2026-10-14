@@ -159,23 +159,32 @@ def compute_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def format_metrics_table(metrics: Dict[str, Any]) -> str:
-    """Render the overall + per-category metrics as a plain-text table."""
+    """Render the overall + per-category metrics as a clean plain-text table."""
     lines = []
-    lines.append(
-        f"{'scope':<10} {'total':>6} {'MVR':>8} {'acc_src':>8} "
-        f"{'acc_cons':>9} {'HDR':>8} {'FUR':>8}"
+    header = (
+        f"{'Scope':<12} {'Total':>6} {'MVR ↓':>9} {'Acc_src':>9} "
+        f"{'Acc_cons':>9} {'HDR':>8} {'FUR':>8}"
     )
-    lines.append("-" * 62)
+    sep = "─" * len(header)
+    lines.append(sep)
+    lines.append(header)
+    lines.append(sep)
     lines.append(
-        f"{'ALL':<10} {metrics['total']:>6} {metrics['mvr'] * 100:>7.2f}% "
-        f"{metrics['acc_static'] * 100:>7.2f}% {metrics['acc_cons'] * 100:>8.2f}% "
+        f"{'ALL':<12} {metrics['total']:>6} {metrics['mvr'] * 100:>8.2f}% "
+        f"{metrics['acc_static'] * 100:>8.2f}% {metrics['acc_cons'] * 100:>8.2f}% "
         f"{metrics['hdr'] * 100:>7.2f}% {metrics['fur'] * 100:>7.2f}%"
     )
-    for row in metrics.get("per_category", []):
-        lines.append(
-            f"{row['key']:<10} {row['total']:>6} {row['mvr'] * 100:>7.2f}% "
-            f"{'':>8} {'':>9} {row['hdr'] * 100:>7.2f}% {row['fur'] * 100:>7.2f}%"
-        )
+    cat_rows = metrics.get("per_category", [])
+    if cat_rows:
+        lines.append(sep)
+        for row in cat_rows:
+            label = f"Cat {row['key']}"
+            lines.append(
+                f"{label:<12} {row['total']:>6} {row['mvr'] * 100:>8.2f}% "
+                f"{row['acc_static'] * 100:>8.2f}% {row['acc_cons'] * 100:>8.2f}% "
+                f"{row['hdr'] * 100:>7.2f}% {row['fur'] * 100:>7.2f}%"
+            )
+    lines.append(sep)
     return "\n".join(lines)
 
 

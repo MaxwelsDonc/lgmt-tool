@@ -8,7 +8,8 @@ cases:
     2. Metric detail (cards + collapsible tables; violation counts link
        into the per-group view with filters applied).
     3. Per-MG audit view (violations as full cards rendered lazily,
-       consistent groups as one-line summaries expandable on demand).
+       consistent groups as one-line summaries expandable on demand,
+       with side-by-side FOL/NL diffs and CoT reasoning traces).
 
 Everything is inlined (CSS/JS) so the report opens offline by double-click.
 """
@@ -16,14 +17,16 @@ import html
 import json
 import os
 import re
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from lgmt.core.structure import MetamorphicGroups, TestCase
 
 REFERENCE_PATH = str(Path(__file__).resolve().parent.parent / "data" / "reference_metrics.json")
 REFERENCE_PROMPTING = "zero_cot"
+
+
 def _reference_snapshot() -> str:
     try:
         from lgmt import __version__
@@ -36,6 +39,14 @@ REFERENCE_SNAPSHOT = _reference_snapshot()
 
 #: How many violation cards render upfront; more load on demand.
 LAZY_BATCH = 30
+
+_METRIC_TIPS = {
+    "mvr": "Metamorphic Violation Rate: fraction of groups where source and follow-up verdicts disagree (lower is better).",
+    "acc_static": "Static Accuracy: accuracy on original source cases alone (higher is better).",
+    "acc_cons": "Consistent Accuracy: fraction of groups where BOTH source and follow-up verdicts are correct (higher is better).",
+    "hdr": "Harmful Disagreement Rate: fraction of groups judged correctly on source but flipped to wrong on follow-up (lower is better).",
+    "fur": "Flaw-persisting Unanimous Rate: fraction of groups where both verdicts are wrong yet consistent (lower is better).",
+}
 
 # --------------------------------------------------------------------- #
 # model-name aliasing: the same model often appears under different names
@@ -73,21 +84,22 @@ def normalize_model_name(name: str) -> str:
 
 _CSS = """
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background: #f2f4f8; color: #2b3440; }
-    .container { max-width: 1200px; margin: 0 auto; padding: 28px 20px 60px; }
-    h1 { font-size: 26px; margin: 0 0 4px; color: #1f2937; }
-    h2 { font-size: 18px; margin: 34px 0 12px; color: #1f2937; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background: #f2f4f8; color: #2b3440; line-height: 1.45; }
+    .container { max-width: 1220px; margin: 0 auto; padding: 28px 20px 60px; }
+    h1 { font-size: 26px; margin: 0 0 4px; color: #17273f; letter-spacing: -0.3px; }
+    h2 { font-size: 18px; margin: 34px 0 12px; color: #17273f; }
     .subtitle { color: #6b7280; font-size: 14px; margin-bottom: 18px; }
-    .card { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(16,24,40,.08), 0 1px 2px rgba(16,24,40,.04); padding: 20px; margin-bottom: 20px; }
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(16,24,40,.08), 0 1px 2px rgba(16,24,40,.04); padding: 20px 22px; margin-bottom: 20px; border: 1px solid #e8ecf2; }
 
     /* ---------- leaderboard ---------- */
     .lb-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .lb-table th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: #6b7280; padding: 8px 10px; border-bottom: 2px solid #e5e7eb; user-select: none; }
-    .lb-table th.sortable { cursor: pointer; }
+    .lb-table th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: #5a6577; padding: 9px 10px; border-bottom: 2px solid #e5e7eb; user-select: none; }
+    .lb-table th.sortable { cursor: pointer; transition: color 0.15s ease; }
     .lb-table th.sortable:hover { color: #3a6ea5; }
-    .lb-table th.sorted-asc::after { content: " ▲"; font-size: 10px; }
-    .lb-table th.sorted-desc::after { content: " ▼"; font-size: 10px; }
-    .lb-table td { padding: 9px 10px; border-bottom: 1px solid #f0f1f3; }
+    .lb-table th.sorted-asc::after { content: " ▲"; font-size: 10px; color: #3a6ea5; }
+    .lb-table th.sorted-desc::after { content: " ▼"; font-size: 10px; color: #3a6ea5; }
+    .lb-table td { padding: 9px 10px; border-bottom: 1px solid #f0f1f3; font-variant-numeric: tabular-nums; }
+    .lb-table tr:hover td { background: #f8fafd; }
     .lb-table tr.this-run td { background: #eaf1f9; font-weight: 600; }
     .lb-table tr.medal-1 td:first-child { color: #b8860b; font-weight: 700; }
     .lb-table tr.medal-2 td:first-child { color: #70757a; font-weight: 700; }
@@ -102,17 +114,19 @@ _CSS = """
 
     /* ---------- metric cards ---------- */
     .metric-cards { display: flex; flex-wrap: wrap; gap: 14px; }
-    .metric-card { flex: 1 1 160px; border-radius: 12px; padding: 16px 18px; color: #fff; box-shadow: 0 1px 3px rgba(16,24,40,.12); }
-    .metric-card .mc-value { font-size: 30px; font-weight: 750; line-height: 1.1; font-variant-numeric: tabular-nums; }
-    .metric-card .mc-label { font-size: 12.5px; opacity: .92; margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
-    .mc-red { background: linear-gradient(135deg, #c0392b, #e07b6a); }
+    .metric-card { flex: 1 1 160px; border-radius: 12px; padding: 15px 18px; color: #fff; box-shadow: 0 1px 3px rgba(16,24,40,.12); }
+    .metric-card .mc-value { font-size: 28px; font-weight: 750; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .metric-card .mc-label { font-size: 12px; opacity: .95; margin-top: 5px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; }
+    .metric-card .mc-sub { font-size: 11px; opacity: .82; margin-top: 3px; line-height: 1.25; }
+    .mc-red { background: linear-gradient(135deg, #b83227, #dc6b5b); }
     .mc-amber { background: linear-gradient(135deg, #b9770e, #e2a13d); }
-    .mc-blue { background: linear-gradient(135deg, #3a6ea5, #6f9fd0); }
-    .mc-grey { background: linear-gradient(135deg, #4b5563, #7b8794); }
-    .meta-line { color: #6b7280; font-size: 13px; margin: 6px 0 0; }
-    .meta-line code { background: #eef1f5; padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+    .mc-green { background: linear-gradient(135deg, #1f7a4c, #3aa16d); }
+    .mc-blue { background: linear-gradient(135deg, #335c8d, #5b8bc2); }
+    .mc-grey { background: linear-gradient(135deg, #4b5563, #74808f); }
+    .meta-line { color: #6b7280; font-size: 13px; margin: 10px 0 8px; }
+    .meta-line code { background: #eef1f5; padding: 1px 6px; border-radius: 5px; font-size: 12px; color: #1f2937; }
 
-    details.full-metrics summary { cursor: pointer; color: #3a6ea5; font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+    details.full-metrics summary { cursor: pointer; color: #3a6ea5; font-weight: 600; font-size: 14px; margin: 10px 0 8px; user-select: none; }
     .metrics-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
     .metrics-table th, .metrics-table td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: right; font-variant-numeric: tabular-nums; }
     .metrics-table th { background: #f7f8fa; color: #4b5563; }
@@ -122,48 +136,59 @@ _CSS = """
     a.drill:hover { text-decoration: underline; }
 
     /* ---------- filter bar + MG cards ---------- */
-    .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
-    .filter-bar label { font-size: 13px; color: #4b5563; display: inline-flex; align-items: center; gap: 4px; }
-    .filter-bar input[type="text"] { flex: 1 1 200px; padding: 7px 10px; border: 1px solid #d7dbe0; border-radius: 8px; font-size: 13px; }
-    .filter-bar select { padding: 7px 8px; border: 1px solid #d7dbe0; border-radius: 8px; font-size: 13px; background: #fff; }
-    .filter-count { font-size: 12.5px; color: #6b7280; margin-left: auto; }
+    .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; background: #f8fafc; padding: 10px 12px; border-radius: 10px; border: 1px solid #e5e7eb; }
+    .filter-bar label { font-size: 13px; color: #374151; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font-weight: 500; }
+    .filter-bar input[type="text"] { flex: 1 1 220px; padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px; background: #fff; }
+    .filter-bar select { padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px; background: #fff; }
+    .filter-count { font-size: 12.5px; color: #4b5563; margin-left: auto; font-weight: 600; }
 
-    details.mg-card { background: #fff; border-radius: 10px; box-shadow: 0 1px 2px rgba(16,24,40,.07); margin-bottom: 10px; }
-    details.mg-card summary { cursor: pointer; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; list-style: none; }
+    details.mg-card { background: #fff; border-radius: 10px; box-shadow: 0 1px 2px rgba(16,24,40,.06); margin-bottom: 10px; border: 1px solid #e5e7eb; overflow: hidden; }
+    details.mg-card summary { cursor: pointer; padding: 11px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; list-style: none; background: #fcfcfd; }
+    details.mg-card summary:hover { background: #f5f8fc; }
     details.mg-card summary::-webkit-details-marker { display: none; }
-    .mg-title { font-weight: 600; font-size: 14px; }
-    .mg-sub { color: #6b7280; font-size: 12.5px; }
-    .card-body { padding: 0 16px 16px; }
+    .mg-title { font-weight: 600; font-size: 13.5px; color: #17273f; }
+    .mg-sub { color: #6b7280; font-size: 12.5px; margin-left: auto; }
+    .card-body { padding: 0 16px 16px; border-top: 1px solid #f0f2f5; }
 
-    .mg-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: #fff; border-radius: 8px; box-shadow: 0 1px 2px rgba(16,24,40,.05); padding: 7px 12px; margin-bottom: 5px; cursor: pointer; font-size: 13px; }
-    .mg-summary:hover { background: #f7f9fc; }
+    .mg-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: #fff; border: 1px solid #edf0f4; border-radius: 8px; padding: 7px 12px; margin-bottom: 5px; cursor: pointer; font-size: 13px; transition: background 0.12s ease; }
+    .mg-summary:hover { background: #f4f7fb; }
+    .mg-summary .mg-sub-mr { color: #4b5563; font-size: 12.5px; }
     .mg-summary .mg-sub { margin-left: auto; }
 
-    .load-more { display: block; margin: 12px auto; padding: 8px 22px; border: 1px solid #d7dbe0; border-radius: 8px; background: #fff; color: #3a6ea5; font-size: 13.5px; cursor: pointer; }
+    .load-more { display: block; margin: 14px auto 4px; padding: 8px 22px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #3a6ea5; font-weight: 600; font-size: 13.5px; cursor: pointer; }
     .load-more:hover { background: #f2f6fb; }
 
-    .badge { display: inline-block; padding: 2px 10px; font-size: 11.5px; font-weight: 700; border-radius: 10px; color: #fff; }
+    .badge { display: inline-block; padding: 2px 10px; font-size: 11px; font-weight: 700; border-radius: 10px; color: #fff; letter-spacing: 0.2px; }
     .badge-consistent { background: #1f9d55; }
     .badge-violation { background: #d64541; }
     .badge-error { background: #6b7280; }
-    .badge-correct { background: #1287a8; }
+    .badge-correct { background: #167c9c; }
     .badge-wrong { background: #e2a13d; color: #4d3a05; }
 
     /* ---------- comparison table ---------- */
-    .comparison-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
-    .comparison-table th { background: #f7f8fa; color: #4b5563; padding: 8px 10px; text-align: left; border-bottom: 2px solid #e5e7eb; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+    .comparison-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; margin-top: 10px; border: 1px solid #e5e7eb; }
+    .comparison-table th { background: #f7f8fa; color: #4b5563; padding: 8px 10px; text-align: left; border-bottom: 2px solid #e5e7eb; font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; }
     .comparison-table td { padding: 8px 10px; border-bottom: 1px solid #f0f1f3; vertical-align: top; word-wrap: break-word; }
     .col-logic { width: 30%; background: #fbfcfe; }
     .col-text { width: 20%; }
     .changed-source { background: #fff8e6 !important; }
     .changed-followup { background: #eaf7ee !important; }
     .conclusion-row { font-weight: 700; border-top: 2px solid #9aa3ad; background: #f2f4f6; }
-    .conclusion-changed { background: #ffefc2; }
-    .tag { display: inline-block; padding: 1px 6px; font-size: 10.5px; border-radius: 4px; background: #6b7280; color: #fff; margin-right: 4px; }
-    .split-item { margin-bottom: 6px; padding: 6px; background: #eaf7ee; border-left: 3px solid #1f9d55; border-radius: 0 4px 4px 0; }
-    pre { white-space: pre-wrap; margin: 0; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 12.5px; color: #a3336b; }
-    .text-content { font-family: Georgia, serif; color: #495057; font-style: italic; }
-    .section-header { font-weight: 700; color: #6b7280; margin-bottom: 4px; display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+    .conclusion-changed { background: #ffefc2 !important; }
+    .tag { display: inline-block; padding: 1px 6px; font-size: 10px; font-weight: 700; border-radius: 4px; background: #64748b; color: #fff; margin-right: 5px; vertical-align: middle; }
+    .tag-rewritten { background: #1f8b4c; color: #fff; font-style: normal; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    .split-item { margin-bottom: 6px; padding: 6px 8px; background: #eaf7ee; border-left: 3px solid #1f9d55; border-radius: 0 4px 4px 0; }
+    pre { white-space: pre-wrap; margin: 0; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 12px; color: #9d2958; display: inline; }
+    .text-content { font-family: Georgia, "Times New Roman", serif; color: #374151; font-style: italic; }
+    .section-header { font-weight: 700; color: #6b7280; margin: 8px 0 4px; display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+
+    /* ---------- reasoning drawer & error banner ---------- */
+    details.reasoning-box { margin-top: 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+    details.reasoning-box summary { padding: 7px 12px; font-size: 12px; font-weight: 600; color: #335c8d; cursor: pointer; user-select: none; }
+    .reasoning-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 8px 12px 12px; border-top: 1px solid #e2e8f0; font-size: 12.5px; }
+    .reasoning-col { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 10px; color: #374151; white-space: pre-wrap; max-height: 220px; overflow-y: auto; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    .reasoning-col h4 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.4px; }
+    .error-banner { margin-top: 10px; padding: 8px 12px; border-radius: 6px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-size: 12.5px; font-family: monospace; }
 
     footer { margin-top: 40px; text-align: center; color: #9aa3ad; font-size: 12.5px; }
     footer a { color: #3a6ea5; text-decoration: none; }
@@ -172,8 +197,17 @@ _CSS = """
 _JS = r"""
 // ---------- leaderboard sorting ----------
 var LB = {key: null, dir: 1};
+// Accuracy metrics are higher-is-better (default descending on first click);
+// error/violation rates are lower-is-better (default ascending on first click).
+var DESC_BY_DEFAULT = {acc_static: true, acc_cons: true};
+
 function lbSort(key){
-  if (LB.key === key) { LB.dir *= -1; } else { LB.key = key; LB.dir = 1; }
+  if (LB.key === key) {
+    LB.dir *= -1;
+  } else {
+    LB.key = key;
+    LB.dir = DESC_BY_DEFAULT[key] ? -1 : 1;
+  }
   var tbody = document.querySelector('#lb-table tbody');
   if (!tbody) return;
   var rows = Array.prototype.slice.call(tbody.rows);
@@ -186,6 +220,10 @@ function lbSort(key){
   rows.forEach(function(r, i){
     tbody.appendChild(r);
     r.cells[0].textContent = i + 1;
+    r.classList.remove('medal-1', 'medal-2', 'medal-3');
+    if (i === 0) r.classList.add('medal-1');
+    else if (i === 1) r.classList.add('medal-2');
+    else if (i === 2) r.classList.add('medal-3');
   });
   document.querySelectorAll('#lb-table th.sortable').forEach(function(th){
     th.classList.remove('sorted-asc', 'sorted-desc');
@@ -213,20 +251,29 @@ function esc(s){
 }
 function escapeAttr(s){ return String(s).replace(/"/g, '&quot;'); }
 
+function cleanChangedTag(text){
+  var raw = String(text == null ? '' : text);
+  if (/^\[Changed_(\d+|conclusion)\]\s*/i.test(raw)) {
+    var stripped = raw.replace(/^\[Changed_(\d+|conclusion)\]\s*/i, '');
+    return '<span class="tag tag-rewritten">REWRITTEN</span>' + esc(stripped);
+  }
+  return esc(raw);
+}
+
 // four-column source/follow-up comparison, mirroring the server-side renderer
 function buildCompareTable(src, fol){
-  if (!src.pl) {  // text-only fallback (no MG logic available)
+  if (!src.pl || !src.pl.length) {  // text-only fallback (legacy records without FOL)
     var t = '<span class="section-header">Source</span>';
-    (src.pt || []).forEach(function(p){ t += '<div class="text-content">' + esc(p) + '</div>'; });
-    t += '<div class="text-content"><b>Conclusion:</b> ' + esc(src.ct) + '</div>';
+    (src.pt || []).forEach(function(p){ t += '<div class="text-content">' + cleanChangedTag(p) + '</div>'; });
+    t += '<div class="text-content"><b>Conclusion:</b> ' + cleanChangedTag(src.ct) + '</div>';
     t += '<span class="section-header">Follow-up</span>';
-    (fol.pt || []).forEach(function(p){ t += '<div class="text-content">' + esc(p) + '</div>'; });
-    t += '<div class="text-content"><b>Conclusion:</b> ' + esc(fol.ct) + '</div>';
+    (fol.pt || []).forEach(function(p){ t += '<div class="text-content">' + cleanChangedTag(p) + '</div>'; });
+    t += '<div class="text-content"><b>Conclusion:</b> ' + cleanChangedTag(fol.ct) + '</div>';
     return t;
   }
   var changes = {}, tagged = {}, consumed = {}, f_idx;
-  fol.pt.forEach(function(text, fi){
-    var m = text.match(/\[Changed_(\d+)\]/);
+  (fol.pt || []).forEach(function(text, fi){
+    var m = String(text).match(/\[Changed_(\d+)\]/i);
     if (m) {
       var si = parseInt(m[1], 10);
       (changes[si] = changes[si] || []).push(fi);
@@ -235,43 +282,61 @@ function buildCompareTable(src, fol){
   });
   var rows = '', f_ptr = 0;
   src.pl.forEach(function(s_logic, s_idx){
-    var s_text = src.pt[s_idx] || '', scls = '', fcls = '', fl = '', ft = '';
+    var s_text = (src.pt && src.pt[s_idx]) || '', scls = '', fcls = '', fl = '', ft = '';
     if (changes[s_idx] !== undefined) {
       scls = 'changed-source'; fcls = 'changed-followup';
       changes[s_idx].forEach(function(fi){
         fl += '<div class="split-item"><span class="tag">P' + (fi + 1) + '</span><pre>' + esc(fol.pl[fi]) + '</pre></div>';
-        ft += '<div class="split-item text-content">' + esc(fol.pt[fi]) + '</div>';
+        ft += '<div class="split-item text-content">' + cleanChangedTag(fol.pt[fi]) + '</div>';
         consumed[fi] = true;
       });
     } else {
       while (f_ptr < fol.pl.length && (tagged[f_ptr] || consumed[f_ptr])) f_ptr++;
       if (f_ptr < fol.pl.length) {
+        var changedLogic = (fol.pl[f_ptr] !== s_logic);
+        var changedText = ((fol.pt && fol.pt[f_ptr]) || '') !== s_text;
+        if (changedLogic || changedText) { scls = 'changed-source'; fcls = 'changed-followup'; }
         fl = '<span class="tag">P' + (f_ptr + 1) + '</span><pre>' + esc(fol.pl[f_ptr]) + '</pre>';
-        ft = '<div class="text-content">' + esc(fol.pt[f_ptr] || '') + '</div>';
+        ft = '<div class="text-content">' + cleanChangedTag((fol.pt && fol.pt[f_ptr]) || '') + '</div>';
         consumed[f_ptr] = true; f_ptr++;
       } else { fl = '<i>(Missing)</i>'; }
     }
     rows += '<tr><td class="' + scls + '"><span class="tag">P' + (s_idx + 1) + '</span><pre>' + esc(s_logic) + '</pre></td>'
-      + '<td class="' + scls + '"><div class="text-content">' + esc(s_text) + '</div></td>'
+      + '<td class="' + scls + '"><div class="text-content">' + cleanChangedTag(s_text) + '</div></td>'
       + '<td class="' + fcls + '">' + fl + '</td><td class="' + fcls + '">' + ft + '</td></tr>';
   });
   while (f_ptr < fol.pl.length) {
     if (!consumed[f_ptr]) {
-      rows += '<tr><td><i>(None)</i></td><td></td>'
+      rows += '<tr><td><i>(Added premise)</i></td><td></td>'
         + '<td class="changed-followup"><span class="tag">P' + (f_ptr + 1) + '</span><pre>' + esc(fol.pl[f_ptr]) + '</pre></td>'
-        + '<td class="changed-followup"><div class="text-content">' + esc(fol.pt[f_ptr] || '') + '</div></td></tr>';
+        + '<td class="changed-followup"><div class="text-content">' + cleanChangedTag((fol.pt && fol.pt[f_ptr]) || '') + '</div></td></tr>';
     }
     f_ptr++;
   }
-  var concCls = 'conclusion-row' + (src.cl !== fol.cl ? ' conclusion-changed' : '');
+  var concCls = 'conclusion-row' + ((src.cl !== fol.cl || src.ct !== fol.ct) ? ' conclusion-changed' : '');
   rows += '<tr class="' + concCls + '"><td><span class="tag">Conc</span><pre>' + esc(src.cl) + '</pre></td>'
-    + '<td><div class="text-content">' + esc(src.ct) + '</div></td>'
-    + '<td><pre>' + esc(fol.cl) + '</pre></td>'
-    + '<td><div class="text-content">' + esc(fol.ct) + '</div></td></tr>';
+    + '<td><div class="text-content">' + cleanChangedTag(src.ct) + '</div></td>'
+    + '<td><span class="tag">Conc</span><pre>' + esc(fol.cl) + '</pre></td>'
+    + '<td><div class="text-content">' + cleanChangedTag(fol.ct) + '</div></td></tr>';
   return '<table class="comparison-table"><thead><tr>'
-    + '<th class="col-logic">Source Logic</th><th class="col-text">Source Text</th>'
-    + '<th class="col-logic">Follow-up Logic</th><th class="col-text">Follow-up Text</th>'
+    + '<th class="col-logic">Source Logic (FOL)</th><th class="col-text">Source Text (NL)</th>'
+    + '<th class="col-logic">Follow-up Logic (FOL)</th><th class="col-text">Follow-up Text (NL)</th>'
     + '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function buildReasoningHtml(rec){
+  var extras = '';
+  if (rec.err_msg) {
+    extras += '<div class="error-banner">Inference error: ' + esc(rec.err_msg) + '</div>';
+  }
+  if (rec.src_reason || rec.fol_reason) {
+    extras += '<details class="reasoning-box"><summary>View Model CoT Reasoning Trace (Source vs. Follow-up)</summary>'
+      + '<div class="reasoning-grid">'
+      + '<div class="reasoning-col"><h4>Source Reasoning (' + esc(rec.src_label) + ')</h4>' + esc(rec.src_reason || '(none)') + '</div>'
+      + '<div class="reasoning-col"><h4>Follow-up Reasoning (' + esc(rec.fol_label) + ')</h4>' + esc(rec.fol_reason || '(none)') + '</div>'
+      + '</div></details>';
+  }
+  return extras;
 }
 
 function cardHtml(rec){
@@ -288,7 +353,7 @@ function cardHtml(rec){
   return '<details class="mg-card"' + openAttr + '><summary><span class="mg-title">#'
     + (rec.i + 1) + ' ' + esc(rec.mg_id) + ' · ' + esc(rec.mr) + ' ' + esc(rec.mr_name) + '</span>'
     + badge + srcB + folB + '<span class="mg-sub">ground truth: ' + esc(rec.gt) + '</span></summary>'
-    + '<div class="card-body">' + buildCompareTable(rec.src, rec.fol) + '</div></details>';
+    + '<div class="card-body">' + buildCompareTable(rec.src, rec.fol) + buildReasoningHtml(rec) + '</div></details>';
 }
 
 function summaryHtml(rec){
@@ -384,12 +449,16 @@ function drillFilter(kind, value){
   document.getElementById('per-group').scrollIntoView({behavior: 'smooth'});
 }
 
-window.addEventListener('DOMContentLoaded', function(){
+function initLgmtReport(){
+  try { DATA = JSON.parse(document.getElementById('lgmt-data').textContent); } catch (e) { DATA = []; }
   mgHost = document.getElementById('mg-list');
   sentinel = document.getElementById('lgmt-more');
   if (mgHost) lgmtFilter();
+  LB = {key: null, dir: 1};
   lbSort('mvr');  // establish default sort indicator
-});
+}
+
+window.addEventListener('DOMContentLoaded', initLgmtReport);
 """
 
 
@@ -457,7 +526,6 @@ def build_leaderboard_rows(
         norm = normalize_model_name(run_name)
         for r in rows:
             if normalize_model_name(r["model"]) == norm:
-                # same model: single row showing THIS RUN's numbers
                 r.update(
                     {
                         "mvr": m["mvr"],
@@ -485,16 +553,18 @@ def _leaderboard_html(rows, caliber, prompting, reference) -> Tuple[str, str]:
 
     def _head(label, key, sortable=True):
         cls = "sortable" if sortable else ""
-        return f'<th class="{cls}" data-sort="{key}" onclick="lbSort(\'{key}\')">{label}</th>'
+        tip = _METRIC_TIPS.get(key, "")
+        title_attr = f' title="{html.escape(tip, quote=True)}"' if tip else ""
+        return f'<th class="{cls}" data-sort="{key}"{title_attr} onclick="lbSort(\'{key}\')">{label}</th>'
 
     head = (
         "<tr><th>Rank</th>"
         + _head("Model", "model")
         + _head("MVR ↓", "mvr")
-        + _head("Acc_static", "acc_static")
-        + _head("Acc_cons", "acc_cons")
-        + _head("HDR", "hdr")
-        + _head("FUR", "fur")
+        + _head("Acc_static ↑", "acc_static")
+        + _head("Acc_cons ↑", "acc_cons")
+        + _head("HDR ↓", "hdr")
+        + _head("FUR ↓", "fur")
         + "</tr>"
     )
     body = ""
@@ -538,8 +608,16 @@ def _leaderboard_html(rows, caliber, prompting, reference) -> Tuple[str, str]:
     return table, note
 
 
+def _clean_changed_tag_py(text: str) -> str:
+    raw = str(text or "")
+    m = re.match(r"^\[Changed_(?:\d+|conclusion)\]\s*(.*)$", raw, flags=re.IGNORECASE | re.DOTALL)
+    if m:
+        return f'<span class="tag tag-rewritten">REWRITTEN</span>{html.escape(m.group(1))}'
+    return html.escape(raw)
+
+
 # --------------------------------------------------------------------- #
-# comparison table (kept from the original check_mr layout)
+# comparison table (server-side helper)
 # --------------------------------------------------------------------- #
 def _render_comparison_table(source: TestCase, followup: TestCase) -> str:
     rows = ""
@@ -549,7 +627,7 @@ def _render_comparison_table(source: TestCase, followup: TestCase) -> str:
     tagged_f_indices = set()
 
     for f_idx, f_text in enumerate(followup.premises_text):
-        match = re.search(r"\[Changed_(\d+)\]", f_text)
+        match = re.search(r"\[Changed_(\d+)\]", f_text, flags=re.IGNORECASE)
         if match:
             s_idx = int(match.group(1))
             changes_map.setdefault(s_idx, [])
@@ -561,7 +639,7 @@ def _render_comparison_table(source: TestCase, followup: TestCase) -> str:
     for s_idx, s_logic in enumerate(source.premises_logic):
         s_text_val = source.premises_text[s_idx] if s_idx < len(source.premises_text) else ""
         s_logic_html = f"<pre>{html.escape(s_logic)}</pre>"
-        s_text_html = f'<div class="text-content">{html.escape(s_text_val)}</div>'
+        s_text_html = f'<div class="text-content">{_clean_changed_tag_py(s_text_val)}</div>'
 
         f_logic_html = ""
         f_text_html = ""
@@ -577,7 +655,7 @@ def _render_comparison_table(source: TestCase, followup: TestCase) -> str:
                     f"<pre>{html.escape(part_logic)}</pre></div>"
                 )
                 f_text_html += (
-                    f'<div class="split-item text-content">{html.escape(part_text)}</div>'
+                    f'<div class="split-item text-content">{_clean_changed_tag_py(part_text)}</div>'
                 )
                 consumed_f_indices.add(part_idx)
         else:
@@ -596,7 +674,7 @@ def _render_comparison_table(source: TestCase, followup: TestCase) -> str:
                     f'<span class="tag">P{f_ptr + 1}</span>'
                     f"<pre>{html.escape(f_logic_val)}</pre>"
                 )
-                f_text_html = f'<div class="text-content">{html.escape(f_text_val)}</div>'
+                f_text_html = f'<div class="text-content">{_clean_changed_tag_py(f_text_val)}</div>'
                 consumed_f_indices.add(f_ptr)
                 f_ptr += 1
             else:
@@ -622,10 +700,10 @@ def _render_comparison_table(source: TestCase, followup: TestCase) -> str:
                 f'<span class="tag">P{f_ptr + 1}</span>'
                 f"<pre>{html.escape(f_logic_val)}</pre>"
             )
-            f_text_html = f'<div class="text-content">{html.escape(f_text_val)}</div>'
+            f_text_html = f'<div class="text-content">{_clean_changed_tag_py(f_text_val)}</div>'
             rows += f"""
             <tr class="premise-row">
-                <td><i>(None)</i></td>
+                <td><i>(Added premise)</i></td>
                 <td></td>
                 <td class="changed-followup">{f_logic_html}</td>
                 <td class="changed-followup">{f_text_html}</td>
@@ -633,19 +711,19 @@ def _render_comparison_table(source: TestCase, followup: TestCase) -> str:
         f_ptr += 1
 
     s_conc_logic = html.escape(source.conclusion_logic)
-    s_conc_text = html.escape(source.conclusion_text)
+    s_conc_text = _clean_changed_tag_py(source.conclusion_text)
     f_conc_logic = html.escape(followup.conclusion_logic)
-    f_conc_text = html.escape(followup.conclusion_text)
+    f_conc_text = _clean_changed_tag_py(followup.conclusion_text)
 
     conc_row_class = "conclusion-row"
-    if s_conc_logic != f_conc_logic:
+    if source.conclusion_logic != followup.conclusion_logic or source.conclusion_text != followup.conclusion_text:
         conc_row_class += " conclusion-changed"
 
     rows += f"""
         <tr class="{conc_row_class}">
             <td><span class="tag">Conc</span><pre>{s_conc_logic}</pre></td>
             <td><div class="text-content">{s_conc_text}</div></td>
-            <td><pre>{f_conc_logic}</pre></td>
+            <td><span class="tag">Conc</span><pre>{f_conc_logic}</pre></td>
             <td><div class="text-content">{f_conc_text}</div></td>
         </tr>"""
 
@@ -653,10 +731,10 @@ def _render_comparison_table(source: TestCase, followup: TestCase) -> str:
     <table class="comparison-table">
         <thead>
             <tr>
-                <th class="col-logic">Source Logic</th>
-                <th class="col-text">Source Text</th>
-                <th class="col-logic">Follow-up Logic</th>
-                <th class="col-text">Follow-up Text</th>
+                <th class="col-logic">Source Logic (FOL)</th>
+                <th class="col-text">Source Text (NL)</th>
+                <th class="col-logic">Follow-up Logic (FOL)</th>
+                <th class="col-text">Follow-up Text (NL)</th>
             </tr>
         </thead>
         <tbody>{rows}
@@ -717,8 +795,13 @@ def _metrics_table_html(metrics: Dict[str, Any]) -> str:
         )
 
     head = (
-        "<tr><th>Scope</th><th>Total</th><th>MVR ↓</th><th>Violations</th>"
-        "<th>Acc_static</th><th>Acc_cons</th><th>HDR</th><th>FUR</th></tr>"
+        "<tr><th>Scope</th><th>Total</th>"
+        f'<th title="{html.escape(_METRIC_TIPS["mvr"], quote=True)}">MVR ↓</th>'
+        "<th>Violations</th>"
+        f'<th title="{html.escape(_METRIC_TIPS["acc_static"], quote=True)}">Acc_static ↑</th>'
+        f'<th title="{html.escape(_METRIC_TIPS["acc_cons"], quote=True)}">Acc_cons ↑</th>'
+        f'<th title="{html.escape(_METRIC_TIPS["hdr"], quote=True)}">HDR ↓</th>'
+        f'<th title="{html.escape(_METRIC_TIPS["fur"], quote=True)}">FUR ↓</th></tr>'
     )
     overall = (
         "<tr><td><b>ALL</b></td>"
@@ -737,30 +820,32 @@ def _metrics_table_html(metrics: Dict[str, Any]) -> str:
     mr_rows = "".join(
         _row(r["key"], r, "mr", r["key"]) for r in metrics.get("per_mr", [])
     )
-    # small runs expand the detail by default; large runs stay collapsed
     open_attr = " open" if metrics.get("total", 0) <= 100 else ""
     return (
         f'<table class="metrics-table">{head}{overall}</table>'
         f'<details class="full-metrics"{open_attr}><summary>Full metrics by category and by MR'
-        f" (Acc columns: per-scope accuracy over the groups in that scope)</summary>"
+        f" (click any violation count to filter the evidence cards below)</summary>"
         f'<table class="metrics-table">{head}{cat_rows}</table>'
         f'<table class="metrics-table">{head}{mr_rows}</table></details>'
     )
 
 
-def _metric_card(value: str, label: str, css: str) -> str:
+def _metric_card(value: str, label: str, css: str, sublabel: str = "") -> str:
+    sub_html = f'<div class="mc-sub">{html.escape(sublabel)}</div>' if sublabel else ""
     return (
         f'<div class="metric-card {css}">'
         f'<div class="mc-value">{value}</div>'
-        f'<div class="mc-label">{html.escape(label)}</div></div>'
+        f'<div class="mc-label">{html.escape(label)}</div>'
+        f"{sub_html}</div>"
     )
 
 
 def _record_view(records, mg_by_id) -> str:
     """Serialize records compactly; the browser builds cards on demand.
 
-    Embedding raw logic/text arrays (instead of pre-rendered card HTML)
-    keeps full-scale reports small enough to open smoothly.
+    Uses either explicit ``mgs`` passed at report time OR the
+    ``premises_logic`` / ``conclusion_logic`` fields stored directly inside
+    ``source_input`` / ``followup_input`` in ``results.jsonl``.
     """
     views = []
     for idx, record in enumerate(records):
@@ -784,16 +869,18 @@ def _record_view(records, mg_by_id) -> str:
         else:
             src_in = record.get("source_input", {}) or {}
             fol_in = record.get("followup_input", {}) or {}
+            src_pl = src_in.get("premises_logic")
+            fol_pl = fol_in.get("premises_logic")
             src = {
-                "pl": None,
+                "pl": list(src_pl) if src_pl else None,
                 "pt": list(src_in.get("premises_text", [])),
-                "cl": "",
+                "cl": str(src_in.get("conclusion_logic", "")),
                 "ct": str(src_in.get("conclusion_text", "")),
             }
             fol = {
-                "pl": None,
+                "pl": list(fol_pl) if fol_pl else None,
                 "pt": list(fol_in.get("premises_text", [])),
-                "cl": "",
+                "cl": str(fol_in.get("conclusion_logic", "")),
                 "ct": str(fol_in.get("conclusion_text", "")),
             }
         src_resp = record.get("source_response", {}) or {}
@@ -818,10 +905,13 @@ def _record_view(records, mg_by_id) -> str:
                 "gt": str(record.get("ground_truth", "")),
                 "consistent": record.get("is_consistent") is True,
                 "error": bool(record.get("error")),
+                "err_msg": str(record.get("error", "")) if record.get("error") else "",
                 "src_label": str(src_resp.get("response_label", "?")),
                 "src_ok": bool(src_resp.get("is_correct")),
+                "src_reason": str(src_resp.get("reasoning", "")).strip(),
                 "fol_label": str(fol_resp.get("response_label", "?")),
                 "fol_ok": bool(fol_resp.get("is_correct")),
+                "fol_reason": str(fol_resp.get("reasoning", "")).strip(),
                 "search": search_blob,
                 "src": src,
                 "fol": fol,
@@ -839,27 +929,15 @@ def _field_from_records(records, field) -> Optional[str]:
     return None
 
 
-def generate_run_report(
+def render_report_body(
     records: List[Dict[str, Any]],
     metrics: Dict[str, Any],
-    output_file: str,
     mgs: Optional[List[MetamorphicGroups]] = None,
-    title: str = "LGMT Metamorphic Evaluation Report",
     model: Optional[str] = None,
     prompting: Optional[str] = None,
     extra_runs: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
-    """Full evaluation report: leaderboard + metrics + per-MG audit view.
-
-    Args:
-        records: current run's inference records (drives cards and metrics).
-        metrics: precomputed metrics for ``records``.
-        extra_runs: optional list of ``{"model", "records", "metrics"}`` for
-            other models evaluated on the same MG set (mutual ranking).
-        model / prompting: labels for the current run; when omitted they are
-            inferred from the ``model`` / ``prompting`` fields stored in the
-            result records by the runner.
-    """
+    """Render the inner HTML cards (Leaderboard + Metrics + Per-Group View)."""
     prompting = prompting or _field_from_records(records, "prompting") or "unspecified"
     current_name = model or _field_from_records(records, "model") or "this run"
     extra_runs = extra_runs or []
@@ -896,10 +974,36 @@ def generate_run_report(
     body += '<div class="card"><h2 style="margin-top:0">Metrics Summary</h2>\n'
     body += (
         '<div class="metric-cards">'
-        + _metric_card(f"{metrics['mvr'] * 100:.2f}%", "MVR (violation rate)", "mc-red")
-        + _metric_card(f"{metrics['hdr'] * 100:.2f}%", "HDR (harmful disagreement)", "mc-amber")
-        + _metric_card(str(metrics["violation_count"]), "violations", "mc-blue")
-        + _metric_card(str(metrics["total"]), "metamorphic groups", "mc-grey")
+        + _metric_card(
+            f"{metrics['mvr'] * 100:.2f}%",
+            "MVR (violation rate)",
+            "mc-red",
+            "Source & follow-up disagree (↓)",
+        )
+        + _metric_card(
+            f"{metrics['acc_cons'] * 100:.2f}%",
+            "Acc_cons (consistent acc)",
+            "mc-green",
+            f"Both correct (vs {metrics['acc_static'] * 100:.1f}% static ↑)",
+        )
+        + _metric_card(
+            f"{metrics['hdr'] * 100:.2f}%",
+            "HDR (harmful disagreement)",
+            "mc-amber",
+            "Source right → follow-up wrong (↓)",
+        )
+        + _metric_card(
+            str(metrics["violation_count"]),
+            "violations",
+            "mc-blue",
+            f"Out of {metrics['total']} valid groups",
+        )
+        + _metric_card(
+            str(metrics["total"]),
+            "metamorphic groups",
+            "mc-grey",
+            "Evaluated premise–conclusion pairs",
+        )
         + "</div>"
     )
     meta_bits = [f'model <code>{html.escape(current_name)}</code>']
@@ -949,7 +1053,28 @@ def generate_run_report(
     body += '<div id="mg-list"></div>\n'
     body += '<button class="load-more" id="lgmt-more" onclick="renderMore()">Load more</button>\n'
     body += "</div>"
+    return body
 
+
+def generate_run_report(
+    records: List[Dict[str, Any]],
+    metrics: Dict[str, Any],
+    output_file: str,
+    mgs: Optional[List[MetamorphicGroups]] = None,
+    title: str = "LGMT Metamorphic Evaluation Report",
+    model: Optional[str] = None,
+    prompting: Optional[str] = None,
+    extra_runs: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    """Full evaluation report: leaderboard + metrics + per-MG audit view."""
+    body = render_report_body(
+        records,
+        metrics,
+        mgs=mgs,
+        model=model,
+        prompting=prompting,
+        extra_runs=extra_runs,
+    )
     page = _html_page(title, body)
     os.makedirs(os.path.dirname(os.path.abspath(output_file)), exist_ok=True)
     with open(output_file, "w", encoding="utf-8") as f:

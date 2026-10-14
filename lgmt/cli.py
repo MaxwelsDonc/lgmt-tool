@@ -1,11 +1,13 @@
 """LGMT command-line interface.
 
 Subcommands:
+    demo        offline end-to-end demo with a mock model (no keys, no network)
     build-mgs   source test cases -> metamorphic groups (MR transform + optional NL realize)
     run         inference over MGs + metamorphic oracle consistency check
-    report      metrics (MVR / acc / HDR / FUR) + HTML report
+    report      metrics (MVR / acc / HDR / FUR) + interactive HTML report
     audit       back-translation fidelity audit
-    demo        offline end-to-end demo with a mock model (no keys, no network)
+    list-mrs    list all registered FOL-grounded metamorphic relations
+    web         launch the interactive Web Studio (zero extra dependencies)
 """
 import argparse
 import os
@@ -13,9 +15,11 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from loguru import logger
+
 from lgmt.config import resolve_settings
 from lgmt.core.runner import PROMPTING_PRESETS
-from lgmt.mrs import ALL_MRS, get_mr
+from lgmt.mrs import ALL_MRS, MR_CLASS_REGISTRY, get_mr
 
 PROMPTING_CHOICES = sorted(PROMPTING_PRESETS.keys())
 
@@ -23,6 +27,37 @@ _KEY_PROMPT = (
     "No API key configured. Enter your API key (input hidden), or set "
     "LGMT_API_KEY to skip this prompt: "
 )
+
+_EPILOG = """\
+Three Common Workflows:
+  1. Quick Offline Tour (no API key, no network):
+       lgmt demo
+       lgmt demo --full
+
+  2. Benchmark a Model (on the bundled 3,091-group or 40-group set):
+       export LGMT_API_KEY=sk-...
+       lgmt run --mgs benchmark --model gpt-4o --output results.jsonl
+       lgmt report --results results.jsonl --output report.html
+
+  3. Test Custom Domain Cases (pure natural language, unstructured text, pure FOL, or NL+FOL):
+       lgmt build-mgs --input examples/custom_cases.example.jsonl --output my_mgs.jsonl --model gpt-4o
+       lgmt run --mgs my_mgs.jsonl --model gpt-4o --output my_results.jsonl
+       lgmt report --results my_results.jsonl --output my_report.html
+
+  Interactive Web Studio:
+       lgmt web --port 7860
+"""
+
+
+def _configure_logging(verbose: bool = False) -> None:
+    """Keep terminal output clean by default; full INFO logs still go to files."""
+    logger.remove()
+    level = "INFO" if verbose else "WARNING"
+    logger.add(
+        sys.stderr,
+        level=level,
+        format="<level>{level}</level>: {message}",
+    )
 
 
 def _prompt_for_api_key() -> Optional[str]:
@@ -66,6 +101,46 @@ def _resolve_client(args, settings, require_real=False):
     return client, settings.model
 
 
+def _find_full_eval_set() -> Optional[str]:
+    """Locate the 3,091-group evaluation set (repo checkout or cwd)."""
+    rel = Path("data") / "metamorphic_group" / "processed_mgs_core" / "processed_mgs_3091.jsonl"
+    candidates = [
+        Path.cwd() / rel,
+        Path(__file__).resolve().parent.parent / rel,
+    ]
+    for path in candidates:
+        if path.exists():
+            return str(path.resolve())
+    return None
+
+
+def _resolve_mgs_path(spec: Optional[str]) -> Optional[str]:
+    """Resolve dataset aliases ('demo', 'benchmark', 'full') or return path as-is."""
+    if not spec:
+        return None
+    low = spec.strip().lower()
+    if low == "demo":
+        return str(Path(__file__).resolve().parent / "demo" / "demo_mgs.jsonl")
+    if low in ("benchmark", "full", "3091"):
+        found = _find_full_eval_set()
+        if found:
+            return found
+    return spec
+
+
+def _record_needs_llm_synthesis(r: dict) -> bool:
+    """Return True if a record requires an LLM for unstructured extraction or NL->FOL."""
+    from lgmt.core.builder import looks_like_fol
+
+    if r.get("premises_logic") and r.get("conclusion_logic"):
+        return False
+    pt = [str(p).strip() for p in (r.get("premises_text") or []) if str(p).strip()]
+    ct = str(r.get("conclusion_text") or "").strip()
+    if pt and ct and all(looks_like_fol(p) for p in pt) and looks_like_fol(ct):
+        return False
+    return True
+
+
 # --------------------------------------------------------------------- #
 # subcommands
 # --------------------------------------------------------------------- #
@@ -74,6 +149,7 @@ def cmd_build_mgs(args) -> int:
         build_metamorphic_groups,
         make_nl2fol_translator,
         make_realize_fn,
+        make_unstructured_extractor,
         synthesize_missing_logic,
     )
     from lgmt.core.structure import TestCase
@@ -82,18 +158,17 @@ def cmd_build_mgs(args) -> int:
         save_metamorphic_groups,
     )
 
-    # Load raw records first: cases may be pure natural language, in which
-    # case the FOL skeleton is synthesized before TestCase construction.
     records = load_json_records(args.input)
     if not records:
         print(f"Error: no source test cases loaded from {args.input}")
         return 1
 
-    needs_synthesis = any(
-        not r.get("premises_logic") or not r.get("conclusion_logic") for r in records
-    )
+    needs_llm = any(_record_needs_llm_synthesis(r) for r in records)
     synthesis_client = None
-    if needs_synthesis:
+    translator = None
+    extractor = None
+
+    if needs_llm:
         if args.mock:
             print(
                 "Error: NL→FOL synthesis requires a real model (the mock cannot "
@@ -115,20 +190,32 @@ def cmd_build_mgs(args) -> int:
             )
             return 2
         translator = make_nl2fol_translator(synthesis_client, synthesis_model)
-        n_before = len(records)
-        records = synthesize_missing_logic(records, translator)
+        extractor = make_unstructured_extractor(synthesis_client, synthesis_model)
+
+    n_before = len(records)
+    records = synthesize_missing_logic(
+        records, translator=translator, extractor=extractor
+    )
+    if needs_llm:
         print(
             f"NL→FOL synthesis: {len(records)}/{n_before} cases translated/kept "
             f"(model '{synthesis_model}')."
         )
-        if not records:
-            print("Error: no usable source cases remain after NL→FOL synthesis.")
-            return 1
+    if not records:
+        print("Error: no usable source cases remain after NL→FOL synthesis.")
+        return 1
 
-    fields = ("premises_logic", "conclusion_logic", "premises_text",
-              "conclusion_text", "metadata")
     try:
-        source_cases = [TestCase(**{k: r.get(k) for k in fields}) for r in records]
+        source_cases = [
+            TestCase(
+                premises_logic=r.get("premises_logic"),
+                conclusion_logic=r.get("conclusion_logic"),
+                premises_text=r.get("premises_text"),
+                conclusion_text=r.get("conclusion_text"),
+                metadata=r.get("metadata") or {},
+            )
+            for r in records
+        ]
     except TypeError as e:
         print(f"Error: malformed source case: {e}")
         return 1
@@ -177,7 +264,8 @@ def cmd_run(args) -> int:
     from lgmt.core.runner import run_inference
     from lgmt.utils.io import load_metamorphic_groups
 
-    mgs = load_metamorphic_groups(args.mgs)
+    mgs_path = _resolve_mgs_path(args.mgs)
+    mgs = load_metamorphic_groups(mgs_path)
     if not mgs:
         print(f"Error: no metamorphic groups loaded from {args.mgs}")
         return 1
@@ -200,8 +288,8 @@ def cmd_run(args) -> int:
             print(f"Note: overwriting existing {args.output} (use --resume to append)")
             os.remove(args.output)
     print(
-        f"Running inference: model='{model_name}', prompting='{settings.prompting}', "
-        f"workers={settings.max_workers}"
+        f"Running inference: {len(mgs)} groups | model='{model_name}' | "
+        f"prompting='{settings.prompting}' | workers={settings.max_workers}"
     )
     path = run_inference(
         mgs,
@@ -217,8 +305,6 @@ def cmd_run(args) -> int:
 
 
 def cmd_report(args) -> int:
-    from pathlib import Path
-
     from lgmt.utils.io import load_inference_records, load_metamorphic_groups
     from lgmt.utils.metrics import compute_metrics, format_metrics_table
     from lgmt.utils.report import generate_run_report
@@ -233,7 +319,11 @@ def cmd_report(args) -> int:
         name = (
             models[i]
             if i < len(models)
-            else (Path(path).stem if len(args.results) == 1 else f"run {i + 1}")
+            else (
+                records[0].get("model")
+                if len(args.results) == 1 and records[0].get("model")
+                else (Path(path).stem if len(args.results) == 1 else f"run {i + 1}")
+            )
         )
         runs.append(
             {
@@ -247,7 +337,8 @@ def cmd_report(args) -> int:
     current = runs[0]
     print(format_metrics_table(current["metrics"]))
 
-    mgs = load_metamorphic_groups(args.mgs) if args.mgs else None
+    mgs_path = _resolve_mgs_path(args.mgs) if args.mgs else None
+    mgs = load_metamorphic_groups(mgs_path) if mgs_path else None
     output = args.output or str(
         Path(current["path"]).resolve().parent / "report.html"
     )
@@ -268,7 +359,8 @@ def cmd_audit(args) -> int:
     from lgmt.core.audit import audit_mgs, audit_summary
     from lgmt.utils.io import load_metamorphic_groups, write_jsonl
 
-    mgs = load_metamorphic_groups(args.mgs)
+    mgs_path = _resolve_mgs_path(args.mgs)
+    mgs = load_metamorphic_groups(mgs_path)
     if not mgs:
         print(f"Error: no metamorphic groups loaded from {args.mgs}")
         return 1
@@ -293,19 +385,6 @@ def cmd_audit(args) -> int:
     return 0
 
 
-def _find_full_eval_set() -> Optional[str]:
-    """Locate the 3,091-group evaluation set (repo checkout or cwd)."""
-    rel = Path("data") / "metamorphic_group" / "processed_mgs_core" / "processed_mgs_3091.jsonl"
-    candidates = [
-        Path.cwd() / rel,
-        Path(__file__).resolve().parent.parent / rel,
-    ]
-    for path in candidates:
-        if path.exists():
-            return str(path.resolve())
-    return None
-
-
 def cmd_demo(args) -> int:
     from lgmt.models import MockLLMClient
     from lgmt.core.runner import run_inference
@@ -314,7 +393,7 @@ def cmd_demo(args) -> int:
     from lgmt.utils.report import generate_run_report
 
     if args.mgs:
-        mgs_path = args.mgs
+        mgs_path = _resolve_mgs_path(args.mgs)
     elif args.full:
         mgs_path = _find_full_eval_set()
         if mgs_path is None:
@@ -336,15 +415,14 @@ def cmd_demo(args) -> int:
     os.makedirs(output_dir, exist_ok=True)
     results_path = os.path.join(output_dir, "results.jsonl")
     report_path = os.path.join(output_dir, "report.html")
-    # run_inference appends (resume semantics); a demo rerun must start clean
     if os.path.exists(results_path):
         os.remove(results_path)
 
     client = MockLLMClient(persona=args.persona)
     model_name = f"mock-{args.persona}"
     print(
-        f"[demo] Offline mode: {len(mgs)} demo MGs, mock persona='{args.persona}', "
-        f"prompting='{args.prompting}'. No API calls will be made."
+        f"[demo] Offline mode: {len(mgs)} demo MGs | mock persona='{args.persona}' | "
+        f"prompting='{args.prompting}' (no API key or network needed)"
     )
     run_inference(
         mgs,
@@ -360,9 +438,45 @@ def cmd_demo(args) -> int:
     metrics = compute_metrics(records)
     print(format_metrics_table(metrics))
     generate_run_report(
-        records, metrics, report_path, mgs=mgs, title="LGMT Demo Report (mock model)"
+        records,
+        metrics,
+        report_path,
+        mgs=mgs,
+        title="LGMT Demo Report (mock model)",
+        prompting=args.prompting,
     )
-    print(f"[demo] Done. Artifacts in {os.path.abspath(output_dir)}/")
+    print(f"[demo] Done. Open {os.path.abspath(report_path)} in your browser.")
+    return 0
+
+
+def cmd_list_mrs(args) -> int:
+    cat_names = {
+        "E": "Formula Equivalence (De Morgan, Contraposition, Quantifiers, PNNF)",
+        "S": "Symbol Renaming (Predicate / Constant Alpha-Renaming)",
+        "P": "Premise Restructuring (Reorder, Duplicate, Irrelevant, Fuse, Split)",
+        "C": "Conclusion Variation (Contradiction, Tautology, Double Negation)",
+    }
+    cls_by_index = {cls().index: name for name, cls in MR_CLASS_REGISTRY.items()}
+    header = f"{'Index':<10} {'Class':<10} {'Category':<10} {'Metamorphic Relation Name'}"
+    sep = "─" * 68
+    print(sep)
+    print(header)
+    print(sep)
+    for mr in sorted(ALL_MRS, key=lambda m: m.index):
+        cat = mr.index.split("-")[1][0].upper() if "-" in mr.index else "?"
+        cls_name = cls_by_index.get(mr.index, mr.__class__.__name__)
+        print(f"{mr.index:<10} {cls_name:<10} {cat:<10} {mr.name}")
+    print(sep)
+    print(f"Total registered MRs: {len(ALL_MRS)}")
+    for k, desc in cat_names.items():
+        print(f"  • Category {k}: {desc}")
+    return 0
+
+
+def cmd_web(args) -> int:
+    from lgmt.webapp import launch_server
+
+    launch_server(host=args.host, port=args.port, use_gradio=args.gradio)
     return 0
 
 
@@ -377,11 +491,18 @@ def build_parser() -> argparse.ArgumentParser:
             "Build metamorphic groups, run entailment inference, and evaluate "
             "metamorphic consistency."
         ),
+        epilog=_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--config",
         default=None,
         help="Path to YAML config file (default: config.yaml if present).",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show detailed runtime logs on stderr.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -390,14 +511,14 @@ def build_parser() -> argparse.ArgumentParser:
         "build-mgs",
         help="Source test cases -> metamorphic groups (MR transform + optional NL realize).",
     )
-    p.add_argument("--input", required=True, help="Source test-case JSONL.")
+    p.add_argument("--input", required=True, help="Source test-case JSONL (pure NL, unstructured, pure FOL, or NL+FOL).")
     p.add_argument("--output", required=True, help="Output MG JSONL.")
     p.add_argument(
         "--mr",
         action="append",
         default=None,
         help="MR to apply (class name like MRE15 or index like MR-E1.5); "
-        "repeatable. Default: all 20.",
+        "repeatable. Default: all 20 (see `lgmt list-mrs`).",
     )
     p.add_argument("--max-per-case", type=int, default=1)
     p.add_argument("--seed", type=int, default=42)
@@ -406,7 +527,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip LLM Logic-to-NL back-translation (FOL skeleton only).",
     )
-    p.add_argument("--model", default=None, help="Model for realization.")
+    p.add_argument("--model", default=None, help="Model for NL→FOL / Logic→NL realization.")
     p.add_argument("--api-key", default=None, help="API key (overrides env/config).")
     p.add_argument("--mock", choices=["consistent", "flawed"], default=None,
                    help="Use a mock client (offline) for realization.")
@@ -417,13 +538,17 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser(
         "run", help="Run entailment inference over MGs and judge metamorphic consistency."
     )
-    p.add_argument("--mgs", required=True, help="Metamorphic group JSONL.")
+    p.add_argument(
+        "--mgs",
+        required=True,
+        help="Metamorphic group JSONL path, or shorthand 'demo' (40 groups) / 'benchmark' (3,091 groups).",
+    )
     p.add_argument("--output", required=True, help="Per-MG result JSONL.")
     p.add_argument("--model", default=None, help="Model name or alias.")
     p.add_argument("--api-key", default=None, help="API key (overrides env/config).")
     p.add_argument(
         "--prompting", choices=PROMPTING_CHOICES, default=None,
-        help="Prompting preset (default from config).",
+        help="Prompting preset (default from config: zero_cot).",
     )
     p.add_argument("--workers", type=int, default=None)
     p.add_argument("--temperature", type=float, default=None)
@@ -439,7 +564,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # report
     p = sub.add_parser(
-        "report", help="Compute MVR/acc/HDR/FUR metrics and render an HTML report."
+        "report", help="Compute MVR/acc/HDR/FUR metrics and render an interactive HTML report."
     )
     p.add_argument(
         "--results",
@@ -458,17 +583,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--prompting",
         choices=PROMPTING_CHOICES,
         default=None,
-        help="Prompting preset of the run(s); used for honest leaderboard notes.",
+        help="Prompting preset of the run(s); used for leaderboard calibration.",
     )
-    p.add_argument("--mgs", default=None, help="Optional MG JSONL for full logic comparison.")
-    p.add_argument("--output", default=None, help="Output HTML path.")
+    p.add_argument("--mgs", default=None, help="Optional MG JSONL (only needed for legacy results without FOL).")
+    p.add_argument("--output", default=None, help="Output HTML path (default: <results_dir>/report.html).")
     p.set_defaults(func=cmd_report)
 
     # audit
     p = sub.add_parser(
         "audit", help="Audit Logic-to-NL back-translation fidelity."
     )
-    p.add_argument("--mgs", required=True, help="Metamorphic group JSONL.")
+    p.add_argument("--mgs", required=True, help="Metamorphic group JSONL path or 'demo'/'benchmark'.")
     p.add_argument("--output", required=True, help="Audit record JSONL.")
     p.add_argument("--model", default=None)
     p.add_argument("--api-key", default=None, help="API key (overrides env/config).")
@@ -495,10 +620,31 @@ def build_parser() -> argparse.ArgumentParser:
         "the 40-group demo set (still offline; uses the reference "
         "full_3091 leaderboard caliber).",
     )
-    p.add_argument("--prompting", choices=PROMPTING_CHOICES, default="zero_direct")
+    p.add_argument("--prompting", choices=PROMPTING_CHOICES, default="zero_cot")
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--quiet", action="store_true", help="Hide the progress bar.")
     p.set_defaults(func=cmd_demo)
+
+    # list-mrs
+    p = sub.add_parser(
+        "list-mrs",
+        help="List all registered FOL-grounded metamorphic relations (built-in + custom).",
+    )
+    p.set_defaults(func=cmd_list_mrs)
+
+    # web
+    p = sub.add_parser(
+        "web",
+        help="Launch the interactive LGMT Web Studio (zero extra dependencies).",
+    )
+    p.add_argument("--port", type=int, default=7860, help="Port to serve on (default: 7860).")
+    p.add_argument("--host", default="0.0.0.0", help="Host address (default: 0.0.0.0).")
+    p.add_argument(
+        "--gradio",
+        action="store_true",
+        help="Use the Gradio UI wrapper instead of the built-in native Web Studio.",
+    )
+    p.set_defaults(func=cmd_web)
 
     return parser
 
@@ -513,6 +659,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             pass
     parser = build_parser()
     args = parser.parse_args(argv)
+    _configure_logging(verbose=getattr(args, "verbose", False))
     if args.config is None and os.path.exists("config.yaml"):
         args.config = "config.yaml"
     return args.func(args)

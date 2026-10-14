@@ -184,6 +184,19 @@ def process_group(
             temperature=temperature,
         )
 
+        source_input_dict = {
+            "premises_logic": source_test_case.premises_logic,
+            "conclusion_logic": source_test_case.conclusion_logic,
+            "premises_text": source_test_case.premises_text,
+            "conclusion_text": source_test_case.conclusion_text,
+        }
+        followup_input_dict = {
+            "premises_logic": followup_test_cases.premises_logic,
+            "conclusion_logic": followup_test_cases.conclusion_logic,
+            "premises_text": followup_test_cases.premises_text,
+            "conclusion_text": followup_test_cases.conclusion_text,
+        }
+
         # 2. Extract and format labels; a response that exhausted its
         # retries carries an "error" key — flag the group as failed so
         # metrics exclude it instead of counting a bogus "Unknown" verdict.
@@ -198,6 +211,8 @@ def process_group(
                 "model": model_name,
                 "prompting": prompting,
                 "ground_truth": ground_truth_label,
+                "source_input": source_input_dict,
+                "followup_input": followup_input_dict,
                 "error": source_error or followup_error,
                 "is_valid": False,
             }
@@ -215,7 +230,9 @@ def process_group(
 
         # 3. Calculate metrics
         source_is_correct = source_pred_label == ground_truth_label
-        followup_is_correct = followup_pred_label == ground_truth_label
+        followup_is_correct = followup_pred_label == followup_pred_label and (
+            followup_pred_label == ground_truth_label
+        )
         is_consistent = source_pred_label == followup_pred_label
 
         # 4. Construct the result record
@@ -227,14 +244,8 @@ def process_group(
             "model": model_name,
             "prompting": prompting,
             "ground_truth": ground_truth_label,
-            "source_input": {
-                "premises_text": source_test_case.premises_text,
-                "conclusion_text": source_test_case.conclusion_text,
-            },
-            "followup_input": {
-                "premises_text": followup_test_cases.premises_text,
-                "conclusion_text": followup_test_cases.conclusion_text,
-            },
+            "source_input": source_input_dict,
+            "followup_input": followup_input_dict,
             "source_response": {
                 "reasoning": source_response.get("reasoning", ""),
                 "response_label": source_pred_label,

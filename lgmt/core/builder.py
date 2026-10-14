@@ -1,10 +1,13 @@
 """Build metamorphic groups (MGs) from source entailment test cases.
 
-Pipeline: for each source case, find applicable MRs, apply the first
-``max_per_case`` of them to obtain follow-up cases, and optionally
-"realize" the follow-up natural language via an LLM back-translation
-(Logic-to-NL). Without realization the follow-up keeps the tagged FOL
-skeleton text produced by the transform (``--no-realize`` mode).
+Pipeline:
+1. Normalize source records across four input forms:
+   - Unstructured text (`raw_text`) -> extracted into `premises_text` + `conclusion_text`
+   - Pure FOL (`premises_logic` + `conclusion_logic` only) -> text fields populated
+   - Pure NL (`premises_text` + `conclusion_text` in English/Chinese) -> FOL synthesized & NLTK-validated
+   - Dual NL + FOL -> used directly
+2. Find applicable MRs and rewrite FOL syntax trees to obtain follow-up cases.
+3. Optionally "realize" modified follow-up formulas (`[Changed_*]`) into natural language.
 """
 import json
 import random
@@ -21,14 +24,85 @@ from lgmt.models.base import LLMClient
 from lgmt.mrs import ALL_MRS
 from lgmt.prompts.logic2nl import SYSTEM_PROMPT as LOGIC2NL_SYSTEM_PROMPT
 from lgmt.prompts.logic2nl import get_logic2NL_prompt
-from lgmt.prompts.nl2fol import SYSTEM_PROMPT as NL2FOL_SYSTEM_PROMPT
-from lgmt.prompts.nl2fol import get_nl2fol_prompt
+from lgmt.prompts.nl2fol import (
+    EXTRACT_SYSTEM_PROMPT,
+    SYSTEM_PROMPT as NL2FOL_SYSTEM_PROMPT,
+    get_nl2fol_prompt,
+    get_unstructured_extract_prompt,
+)
 
 _PREMISE_TAG = re.compile(r"^\[Changed_(\d+)\]\s*")
 _CONCLUSION_TAG = re.compile(r"^\[Changed_conclusion\]\s*")
+_FOL_HINT = re.compile(
+    r"(?:\ball\s+[a-z]\b|\bexists\s+[a-z]\b|->|<->|[∀∃¬∧∨→↔]|[A-Z][A-Za-z0-9_]*\([a-zA-Z0-9_,\s]+\))"
+)
 
 RealizeFn = Callable[[TestCase, TestCase], TestCase]
 FOLTranslator = Callable[[List[str], str], dict]
+UnstructuredExtractor = Callable[[str], dict]
+
+
+def looks_like_fol(s: str) -> bool:
+    """Return True if string ``s`` is a valid NLTK FOL formula with logical structure."""
+    if not s or not isinstance(s, str):
+        return False
+    text = s.strip()
+    if not _FOL_HINT.search(text):
+        return False
+    norm = (
+        text.replace("∀", "all ")
+        .replace("∃", "exists ")
+        .replace("→", "->")
+        .replace("↔", "<->")
+        .replace("¬", "-")
+        .replace("∧", "&")
+        .replace("∨", "|")
+    )
+    try:
+        from nltk.sem.logic import ApplicationExpression, Expression
+
+        expr = Expression.fromstring(norm)
+        # A bare single word like " Socrates " is a VariableExpression, not a formula
+        if not isinstance(expr, ApplicationExpression) and not any(
+            tok in norm for tok in ("all ", "exists ", "->", "<->", "&", "|", "-")
+        ):
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def make_unstructured_extractor(client: LLMClient, model: str) -> UnstructuredExtractor:
+    """Extract structured `premises_text` and `conclusion_text` from a free-text paragraph."""
+
+    def extract(raw_text: str) -> dict:
+        prompt = {
+            "system": EXTRACT_SYSTEM_PROMPT,
+            "user": get_unstructured_extract_prompt(raw_text),
+        }
+        raw = client.generate(
+            prompt, model=model, context={"task": "extract_nl"}, max_retries=0
+        )
+        if not raw:
+            raise ValueError("empty extraction response")
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.strip("`").strip()
+            if text.lower().startswith("json"):
+                text = text[4:].strip()
+        obj = json.loads(repair_json(text))
+        if (
+            not isinstance(obj, dict)
+            or not obj.get("premises_text")
+            or not obj.get("conclusion_text")
+        ):
+            raise ValueError(f"unexpected extraction shape: {obj!r}")
+        return {
+            "premises_text": [str(p).strip() for p in obj["premises_text"] if str(p).strip()],
+            "conclusion_text": str(obj["conclusion_text"]).strip(),
+        }
+
+    return extract
 
 
 def make_nl2fol_translator(client: LLMClient, model: str) -> FOLTranslator:
@@ -59,36 +133,89 @@ def make_nl2fol_translator(client: LLMClient, model: str) -> FOLTranslator:
 
 def synthesize_missing_logic(
     records: List[dict],
-    translator: FOLTranslator,
+    translator: Optional[FOLTranslator] = None,
+    extractor: Optional[UnstructuredExtractor] = None,
     retries: int = 2,
 ) -> List[dict]:
-    """Fill missing FOL fields of raw source-case records via ``translator``.
+    """Normalize raw source-case records across all 4 input types:
 
-    Records that already carry non-empty ``premises_logic`` and
-    ``conclusion_logic`` pass through unchanged. For the rest, the
-    translator output is validated with NLTK's LogicParser (one parse per
-    formula, premise counts must match); after ``retries`` failed attempts
-    the case is dropped with a warning.
+    1. Unstructured ``raw_text`` -> split into ``premises_text`` + ``conclusion_text`` via ``extractor``.
+    2. Pure FOL (``premises_logic`` + ``conclusion_logic`` without ``premises_text``) ->
+       populate ``premises_text`` / ``conclusion_text`` from the formulas.
+    3. Pure FOL typed inside ``premises_text`` / ``conclusion_text`` -> auto-detected
+       via ``looks_like_fol`` and copied into ``premises_logic`` / ``conclusion_logic``.
+    4. Pure NL (English / Chinese / bilingual ``premises_text`` + ``conclusion_text``) ->
+       translated to NLTK-validated FOL via ``translator``.
     """
     from nltk.sem.logic import LogicParser
 
     parser = LogicParser()
     filled = []
     for rec in records:
+        rec = dict(rec)
+
+        # Step 1: Unstructured paragraph extraction if needed
+        if (
+            not rec.get("premises_logic")
+            and not rec.get("premises_text")
+            and rec.get("raw_text")
+        ):
+            if extractor is None:
+                logger.warning(
+                    "Case dropped: unstructured 'raw_text' requires a model extractor"
+                )
+                continue
+            try:
+                extracted = extractor(str(rec["raw_text"]))
+                rec["premises_text"] = extracted["premises_text"]
+                rec["conclusion_text"] = extracted["conclusion_text"]
+            except Exception as e:
+                logger.warning(f"Unstructured extraction failed (case dropped): {e}")
+                continue
+
+        # Step 2: If logic is present but text is missing (Pure FOL record), fill text
         if rec.get("premises_logic") and rec.get("conclusion_logic"):
+            if not rec.get("premises_text"):
+                rec["premises_text"] = [str(f) for f in rec["premises_logic"]]
+            if not rec.get("conclusion_text"):
+                rec["conclusion_text"] = str(rec["conclusion_logic"])
             filled.append(rec)
             continue
-        premises_text = rec.get("premises_text") or []
-        conclusion_text = rec.get("conclusion_text") or ""
+
+        premises_text = [str(p).strip() for p in (rec.get("premises_text") or []) if str(p).strip()]
+        conclusion_text = str(rec.get("conclusion_text") or "").strip()
         if not premises_text or not conclusion_text:
             logger.warning(
-                "Case dropped: NL→FOL synthesis needs non-empty "
-                "premises_text/conclusion_text"
+                "Case dropped: needs non-empty premises_text/conclusion_text or premises_logic/conclusion_logic"
             )
             continue
+
+        # Step 3: Check if the user typed FOL formulas directly into premises_text/conclusion_text
+        if all(looks_like_fol(p) for p in premises_text) and looks_like_fol(conclusion_text):
+            norm_fn = lambda s: (
+                s.replace("∀", "all ")
+                .replace("∃", "exists ")
+                .replace("→", "->")
+                .replace("↔", "<->")
+                .replace("¬", "-")
+                .replace("∧", "&")
+                .replace("∨", "|")
+            )
+            rec["premises_logic"] = [norm_fn(p) for p in premises_text]
+            rec["conclusion_logic"] = norm_fn(conclusion_text)
+            filled.append(rec)
+            continue
+
+        # Step 4: Pure NL -> synthesize FOL via translator
+        if translator is None:
+            logger.warning(
+                "Case dropped: NL→FOL synthesis requires a real model translator"
+            )
+            continue
+
         ok = False
         last_error: Optional[Exception] = None
-        for attempt in range(retries + 1):
+        for _attempt in range(retries + 1):
             try:
                 result = translator(list(premises_text), conclusion_text)
                 new_logic = [str(f) for f in result["premises_logic"]]
@@ -101,7 +228,13 @@ def synthesize_missing_logic(
                 for formula in new_logic + [new_conclusion]:
                     parser.parse(formula)
                 filled.append(
-                    {**rec, "premises_logic": new_logic, "conclusion_logic": new_conclusion}
+                    {
+                        **rec,
+                        "premises_text": premises_text,
+                        "conclusion_text": conclusion_text,
+                        "premises_logic": new_logic,
+                        "conclusion_logic": new_conclusion,
+                    }
                 )
                 ok = True
                 break
@@ -123,23 +256,8 @@ def build_metamorphic_groups(
     realize_fn: Optional[RealizeFn] = None,
     max_workers: int = 1,
 ) -> List[MetamorphicGroups]:
-    """Apply MRs to source cases and collect metamorphic groups.
-
-    Args:
-        source_cases: source entailment test cases
-        mr_list: MRs to try (default: all 20)
-        max_per_case: max MGs produced per source case
-        seed: RNG seed for MR selection order and shuffle-based MRs
-        realize_fn: optional Logic-to-NL back-translation; when ``None``
-            the follow-up keeps the FOL-skeleton text with ``[Changed_*]``
-            tags
-        max_workers: parallel build workers (safe for LLM-backed realize)
-    """
+    """Apply MRs to source cases and collect metamorphic groups."""
     mrs = mr_list or ALL_MRS
-    # Shuffle-based MRs consume the global ``random`` module, so the
-    # seed+transform pair is serialized under a lock: deterministic builds
-    # without cross-thread RNG pollution. (LLM-backed realize still runs
-    # concurrently outside the lock.)
     _transform_lock = threading.Lock()
 
     def _build_one(args: Tuple[int, TestCase]) -> List[MetamorphicGroups]:
@@ -204,7 +322,8 @@ def make_realize_fn(
 
     Every follow-up premise/conclusion still carrying a ``[Changed_*]``
     tag is translated from its transformed FOL formula into natural
-    language; the tag is dropped after translation.
+    language (matching the language of ``original_nl``); the tag is
+    dropped after translation.
     """
 
     def _translate(original_fol: str, original_nl: str, transformed_fol: str) -> str:

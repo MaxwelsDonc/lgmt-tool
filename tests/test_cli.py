@@ -1,4 +1,5 @@
-"""CLI smoke tests: help for every subcommand and an offline demo run."""
+"""CLI smoke tests: help for every subcommand, list-mrs, shorthand aliases, and offline demo."""
+import json
 import os
 import subprocess
 import sys
@@ -17,7 +18,7 @@ def test_main_help():
 
 
 @pytest.mark.parametrize(
-    "subcommand", ["build-mgs", "run", "report", "audit", "demo"]
+    "subcommand", ["build-mgs", "run", "report", "audit", "demo", "list-mrs", "web"]
 )
 def test_subcommand_help(subcommand):
     with pytest.raises(SystemExit) as exc:
@@ -34,6 +35,15 @@ def test_python_dash_m_help():
     )
     assert result.returncode == 0
     assert "build-mgs" in result.stdout
+    assert "Three Common Workflows" in result.stdout
+
+
+def test_list_mrs_command(capsys):
+    rc = main(["list-mrs"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Total registered MRs: 20" in out
+    assert "MR-E1.1" in out and "MR-C3" in out
 
 
 def test_demo_end_to_end_offline(tmp_path, capsys):
@@ -48,14 +58,32 @@ def test_demo_end_to_end_offline(tmp_path, capsys):
 
     lines = results_file.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 40  # bundled demo set
-    assert '"is_consistent"' in lines[0]
+    first_rec = json.loads(lines[0])
+    assert "is_consistent" in first_rec
+    # F1 verification: FOL logic is persisted directly in results.jsonl
+    assert first_rec["source_input"].get("premises_logic")
+    assert first_rec["followup_input"].get("premises_logic")
 
     html = report_file.read_text(encoding="utf-8")
     assert "Metrics Summary" in html
     assert "Per-Group Results" in html
+    # F4 verification: default demo uses zero_cot, so no prompting mismatch note
+    assert "note: reference used zero_cot" not in html
 
     captured = capsys.readouterr().out
     assert "MVR" in captured and "HDR" in captured
+
+
+def test_run_with_demo_shorthand_and_report_without_mgs(tmp_path):
+    res_file = tmp_path / "res.jsonl"
+    rep_file = tmp_path / "rep.html"
+    rc1 = main(["run", "--mgs", "demo", "--mock", "flawed", "--output", str(res_file)])
+    assert rc1 == 0
+    rc2 = main(["report", "--results", str(res_file), "--output", str(rep_file)])
+    assert rc2 == 0
+    html = rep_file.read_text(encoding="utf-8")
+    # Even without --mgs, the report has full FOL logic arrays in #lgmt-data
+    assert '"pl": [' in html or '"pl":[' in html
 
 
 def test_demo_consistent_persona_has_no_violations(tmp_path):

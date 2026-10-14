@@ -72,6 +72,8 @@ def test_automatic_registration_of_new_mr():
         assert reloaded.get_mr("MR-T9").name == "Temp Registration Probe"
     finally:
         MODULE_PATH.unlink(missing_ok=True)
+        for pyc in (PKG_DIR / "__pycache__").glob("mrt9_probe*.pyc"):
+            pyc.unlink(missing_ok=True)
         sys.modules.pop("lgmt.mrs.premise.mrt9_probe", None)
         importlib.reload(lgmt.mrs)
         assert len(lgmt.mrs.ALL_MRS) == 20

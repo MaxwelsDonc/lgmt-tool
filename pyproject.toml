@@ -44,6 +44,7 @@ Repository = "https://github.com/MaxwelsDonc/lgmt-tool"
 
 [project.scripts]
 lgmt = "lgmt.cli:main"
+lgmt-web = "lgmt.webapp:main"
 
 [tool.setuptools.packages.find]
 include = ["lgmt*"]

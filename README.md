@@ -9,24 +9,36 @@ into provably equivalent variants, ask both, and flag every self-contradiction.*
 
 LGMT is the tool companion of *"LGMT: Logic-Grounded Metamorphic Testing for
 Evaluating the Reasoning Reliability of LLMs"* (Knowledge-Based Systems, in
-press). It packages that study's methodology as a reusable tool:
+press). It packages that study's methodology into an extensible testing
+pipeline:
 
 - **20 first-order-logic metamorphic relations** — equivalence-law rewriting
   of FOL syntax trees (De Morgan, contraposition, quantifier dualities,
-  premise restructuring, symbol renaming), with a three-method plugin API
-  for adding your own;
+  premise restructuring, symbol renaming), with auto-discovery for custom MRs;
 - **Z3-guarded correctness**: every built-in MR's equivalence preservation
-  is verified by SMT-based tests;
-- a **five-command CLI** (`demo` / `build-mgs` / `run` / `report` / `audit`)
-  targeting any OpenAI-compatible endpoint — commercial APIs or local
-  vLLM/Ollama — plus a local Gradio web demo;
-- a **self-contained HTML report**: your model ranked against six reference
-  LLMs, per-MR metrics, and side-by-side violation evidence;
-- a bundled **3,091-group evaluation benchmark** with documented provenance.
+  is verified by SMT-based tests (`tests/z3check.py`);
+- **CLI + Zero-Dependency Web Studio** targeting any OpenAI-compatible
+  endpoint — commercial APIs or local vLLM/Ollama — plus an offline mock
+  mode that runs without an API key;
+- **Self-contained HTML defect reports**: your model ranked against six
+  reference SOTA LLMs, per-MR drill-down metrics, side-by-side FOL/NL diffs,
+  and collapsible CoT reasoning traces;
+- **Bundled 3,091-group evaluation benchmark** with documented provenance.
 
 ![An LGMT report: your model ranked against six reference LLMs, with per-group violation evidence](docs/report-screenshot.png)
 
-## Try it
+## Three Workflows at a Glance
+
+Depending on your goal, choose one of the three workflows below (available
+both in the CLI and as the three tabs of `lgmt web`):
+
+| Workflow | What you need | Command |
+|---|---|---|
+| **1. Quick Offline Tour**<br>*(Experience LGMT in 30s)* | **Nothing** — no API key, no network. Uses a deterministic mock model on bundled data. | `lgmt demo` *(40 groups)*<br>`lgmt demo --full` *(3,091 groups)* |
+| **2. Benchmark a Model**<br>*(Rank an LLM against 6 SOTA models)* | **An API key** (or local vLLM/Ollama URL). Uses the bundled `demo` (40) or `benchmark` (3,091) set. | `lgmt run --mgs benchmark --model gpt-4o --output results.jsonl`<br>`lgmt report --results results.jsonl --output report.html` |
+| **3. Test Custom Cases**<br>*(Audit your own domain rules)* | **An API key + a `.jsonl` file** of premise–conclusion pairs (pure English or NL+FOL; no labels needed). | `lgmt build-mgs --input examples/custom_cases.example.jsonl --output my_mgs.jsonl --model gpt-4o`<br>`lgmt run --mgs my_mgs.jsonl --model gpt-4o --output my_res.jsonl`<br>`lgmt report --results my_res.jsonl --output my_report.html` |
+
+## Try it (Installation & Workflow 1)
 
 **Option 1 — Docker (nothing to install beyond Docker):**
 
@@ -45,70 +57,87 @@ python -m venv .venv && source .venv/bin/activate   # use python3 on macOS/Linux
 pip install -e .
 
 lgmt demo            # 40 groups, offline mock model → demo_output/report.html
-lgmt demo --full     # same tour on the full benchmark (overwrites demo_output/)
+lgmt demo --full     # same tour on the full 3,091-group benchmark (overwrites demo_output/)
 ```
 
-Open `demo_output/report.html` — the leaderboard above is what you get.
+Open `demo_output/report.html` in any browser — the leaderboard, metric
+cards, and side-by-side FOL/NL violation evidence open completely offline.
 (On Windows consoles, `set PYTHONIOENCODING=utf-8` keeps logic symbols
 printing cleanly.)
 
-**Prefer a UI over the CLI?** After installing (Option 1 or 2), launch the
-local web demo — three tabs: offline demo, test-your-own-model, report
-browser: `pip install -r requirements-web.txt && python -m lgmt.webapp`,
-then open http://localhost:7860.
+**Prefer a Web UI over the CLI?** Launch the built-in **LGMT Web Studio**
+(zero extra dependencies — works immediately after `pip install -e .` or via
+Docker):
 
-## Evaluate a real model
+```bash
+lgmt web --port 7860
+# or via Docker: docker run --rm -p 7860:7860 lgmt lgmt-web
+```
 
-Works with any OpenAI-compatible endpoint:
+Then open http://localhost:7860 to access the three guided workflow tabs
+(**1. Quick Demo**, **2. Benchmark Your Model**, **3. Test Custom Cases**)
+with live interactive report rendering.
+
+## Workflow 2: Evaluate a real model on the benchmark
+
+Works with any OpenAI-compatible endpoint (OpenAI, DeepSeek, Claude proxy,
+or local vLLM / Ollama):
 
 ```bash
 export LGMT_API_KEY=sk-...                                     # and LGMT_BASE_URL if not OpenAI
-lgmt run --mgs data/metamorphic_group/processed_mgs_core/processed_mgs_3091.jsonl \
-         --model your-model --output results.jsonl
+lgmt run --mgs benchmark --model your-model --output results.jsonl
 lgmt report --results results.jsonl --output report.html       # your model joins the leaderboard
 ```
 
-Config precedence: `--api-key` / other CLI flags > `LGMT_API_KEY` /
-`LGMT_BASE_URL` / `LGMT_MODEL` env vars > `config.yaml` > defaults. When
-the key is missing everywhere, the CLI prompts for it interactively on a
-terminal (hidden input; the key stays in memory only) — non-interactive
-runs keep the plain error message.
+- **Dataset shorthands:** `--mgs benchmark` resolves to
+  `data/metamorphic_group/processed_mgs_core/processed_mgs_3091.jsonl`
+  (3,091 groups); `--mgs demo` resolves to the 40-group fast subset
+  (explicit file paths also work).
+- **Config precedence:** `--api-key` / other CLI flags > `LGMT_API_KEY` /
+  `LGMT_BASE_URL` / `LGMT_MODEL` env vars > `config.yaml` > defaults. When
+  the key is missing everywhere, the CLI prompts for it interactively on a
+  terminal (hidden input; held in memory only).
+- **Cost transparency:** The full 3,091-group benchmark issues one judgment
+  per source and per follow-up case — **6,182 API calls** per model (~10⁷
+  tokens; use `--mgs demo` for an 80-call fast check first).
 
-**Cost transparency.** The full benchmark issues one judgment per source
-and per follow-up case — **6,182 API calls** per model (~10⁷ tokens;
-multiply by your provider's price).
+## Workflow 3: Test your own domain cases
 
-**Your own test cases.** Write premise–conclusion pairs as JSONL — no FOL
-knowledge or ground-truth labels needed. Two input modes:
+Write premise–conclusion pairs as JSONL — **no ground-truth labels needed**.
+Two input modes are supported:
 
-- **Pure natural language** (recommended): only `premises_text` /
+- **Pure natural language (recommended):** provide only `premises_text` and
   `conclusion_text` per record (see
   [examples/custom_cases.example.jsonl](examples/custom_cases.example.jsonl)
-  for a medical/legal/everyday template). LGMT synthesizes the FOL
-  skeleton automatically with your model before building MGs:
+  for a medical/legal/everyday template). LGMT synthesizes the FOL skeleton
+  automatically with your model and validates every formula with NLTK's
+  logic parser before applying MRs:
   ```bash
   lgmt build-mgs --input examples/custom_cases.example.jsonl \
                  --output my_mgs.jsonl --model <your-model>
+  lgmt run --mgs my_mgs.jsonl --model <your-model> --output my_results.jsonl
+  lgmt report --results my_results.jsonl --output my_report.html
   ```
-  Translations are validated with NLTK's parser; cases that fail are
-  dropped with a warning. This mode needs a real model (`--mock` cannot
-  translate).
-- **Bring your own FOL**: records with `premises_logic` /
-  `conclusion_logic` are used as-is (no model needed — `--mock` and
-  `--no-realize` run fully offline for these inputs).
+- **Bring your own FOL:** records that already include `premises_logic` and
+  `conclusion_logic` are used as-is (`--mock` and `--no-realize` run fully
+  offline for these inputs).
 
-## Tests
+To audit back-translation fidelity on generated MGs with an independent
+judge model:
 
 ```bash
-pip install -e ".[dev]"
-pytest        # 78 passed, 5 skipped (rare-MR applicability skips)
+lgmt audit --mgs my_mgs.jsonl --output audit.jsonl --model <judge-model>
 ```
 
-MR equivalence (Z3-backed), label canonicalization, mock self-consistency,
-CLI end-to-end, parse-failure handling, and report rendering. CI runs
-the same suite on Windows/macOS/Linux × Python 3.10–3.13.
-
 ## Extending LGMT with a custom MR
+
+Inspect all currently registered MRs at any time with:
+
+```bash
+lgmt list-mrs
+```
+
+To add a new MR, subclass `MetamorphicRelation` and implement four methods:
 
 ```python
 from lgmt.core.structure import MetamorphicRelation, TestCase
@@ -133,15 +162,27 @@ class MyMR(MetamorphicRelation):
 
 Save the class in any module under `lgmt/mrs/` (e.g.
 `lgmt/mrs/premise/mrx1.py`) — it is discovered and registered
-automatically on the next import, no `__init__.py` edit needed. Then use
-it like any built-in MR:
+automatically on the next import, with no `__init__.py` edit needed:
 
 ```bash
+lgmt list-mrs
 lgmt build-mgs --input my_cases.jsonl --output my_mgs.jsonl --mr MR-X1 --no-realize
 ```
 
-The 20 built-in MRs use exactly this API, and their equivalence
-preservation is guarded by `tests/test_mr_equivalence.py` (Z3-backed).
+The 20 built-in MRs use this exact API, and their equivalence preservation
+is guarded by `tests/test_mr_equivalence.py` (Z3-backed).
+
+## Tests
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
+MR equivalence (Z3-backed), label canonicalization, mock self-consistency,
+NL→FOL synthesis, custom MR auto-discovery, CLI end-to-end, parse-failure
+handling, and report/web rendering. CI runs the same suite on
+Windows/macOS/Linux × Python 3.10–3.13.
 
 ## Repository layout
 
@@ -149,7 +190,7 @@ preservation is guarded by `tests/test_mr_equivalence.py` (Z3-backed).
 lgmt/      the Python package (core / mrs / prompts / models / utils / webapp)
 data/      source test cases and the 3,091-group benchmark (see data/README.md)
 docs/      assets (report screenshot, TikZ architecture figure)
-examples/  multi-model evaluation driver (run_multiple_models.sh)
+examples/  custom case templates and multi-model evaluation driver
 tools/     MR regression checker — `python tools/mr_smoke_compare.py`
 tests/     pytest suite
 ```
