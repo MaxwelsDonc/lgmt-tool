@@ -16,6 +16,7 @@ import html
 import json
 import os
 import tempfile
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -87,6 +88,10 @@ EXAMPLE_JSONL = EXAMPLE_FOL_JSONL
 #: Per-tab isolated run states ("demo", "benchmark", "custom") + legacy LAST_RUN
 RUNS_BY_TAB: Dict[str, Dict[str, Any]] = {}
 LAST_RUN: Dict[str, Any] = {}
+
+#: Benchmark run history per (dataset, prompting): aggregates only, capped.
+_BENCH_HISTORY_MAX = 5
+_BENCH_HISTORY: Dict[tuple, "deque"] = {}
 
 
 # --------------------------------------------------------------------- #
@@ -304,6 +309,21 @@ def execute_benchmark_workflow(
     )
     records = load_inference_records(results_path)
     metrics = compute_metrics(records)
+
+    # Keep a small in-memory history per (dataset, prompting) so repeated
+    # benchmark runs of different models rank against each other. Only
+    # aggregate metrics + model names are retained (never raw records),
+    # and history is capped to avoid unbounded growth.
+    bench_key = (dataset, prompting)
+    history = _BENCH_HISTORY.setdefault(
+        bench_key, deque(maxlen=_BENCH_HISTORY_MAX)
+    )
+    prev = RUNS_BY_TAB.get("benchmark")
+    if prev and prev.get("_bench_key") == bench_key:
+        history.append({"model": prev["model_name"], "metrics": prev["metrics"]})
+    history.append({"model": model_name, "metrics": metrics})
+    extra_runs = [{"model": h["model"], "metrics": h["metrics"]} for h in history]
+
     generate_run_report(
         records,
         metrics,
@@ -312,9 +332,15 @@ def execute_benchmark_workflow(
         title=f"LGMT Benchmark Report — {model_name}",
         model=model_name,
         prompting=prompting,
+        extra_runs=extra_runs,
     )
     body_html = render_report_body(
-        records, metrics, mgs=mgs, model=model_name, prompting=prompting
+        records,
+        metrics,
+        mgs=mgs,
+        model=model_name,
+        prompting=prompting,
+        extra_runs=extra_runs,
     )
     summary = (
         f"Benchmark run completed: {len(records)} groups ({dataset}) · "
@@ -328,6 +354,8 @@ def execute_benchmark_workflow(
         "body_html": body_html,
         "summary": summary,
         "kind": f"benchmark ({model_name})",
+        "model_name": model_name,
+        "_bench_key": bench_key,
     }
     RUNS_BY_TAB["benchmark"] = state
     LAST_RUN.update(state)

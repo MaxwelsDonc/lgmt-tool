@@ -266,8 +266,32 @@ def process_group(
                 f.write(json.dumps(result, ensure_ascii=False) + "\n")
         return True
     except Exception as e:
+        # The whole group failed (e.g. every API attempt raised). Write a
+        # failed record so the group is visible in results and counted in
+        # metrics["failed"] instead of vanishing silently.
+        failed_record = {
+            "mg_id": mg_id,
+            "mr_name": getattr(mg, "mr_name", ""),
+            "mr_index": mg.metadata.get("mr_index", ""),
+            "data_source": mg.metadata.get("data_source", ""),
+            "model": model_name,
+            "prompting": prompting,
+            "ground_truth": mg.source_case.metadata.get("label", ""),
+            "error": f"{type(e).__name__}: {e}",
+            "is_valid": False,
+        }
+        try:
+            with RESULT_LOCK:
+                with open(result_save_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(failed_record, ensure_ascii=False) + "\n")
+        except Exception as write_error:
+            logger.error(
+                f"Task Failed | MG_ID: {mg_id} | Error: {e} | "
+                f"and the failure record could not be written: {write_error}"
+            )
+            return False
         logger.error(f"Task Failed | MG_ID: {mg_id} | Error: {e}")
-        return False
+        return True
 
 
 def run_inference(
@@ -292,6 +316,10 @@ def run_inference(
     system_prompt_text, cot = PROMPTING_PRESETS[prompting]
 
     os.makedirs(os.path.dirname(os.path.abspath(result_save_path)), exist_ok=True)
+    # guarantee the results file exists even if every group fails, so
+    # downstream loaders and reports never hit a missing file
+    if not os.path.exists(result_save_path):
+        open(result_save_path, "w", encoding="utf-8").close()
 
     log_dir = os.path.join(os.path.dirname(os.path.abspath(result_save_path)), "logs")
     os.makedirs(log_dir, exist_ok=True)
@@ -338,6 +366,7 @@ def run_inference(
 
     total_time = time.perf_counter() - start_time
     logger.success(
-        f"Finished. Success: {success_count}/{len(mgs)} | Total Time: {total_time:.2f}s"
+        f"Finished. Completed: {success_count}/{len(mgs)} groups | "
+        f"Total Time: {total_time:.2f}s"
     )
     return result_save_path

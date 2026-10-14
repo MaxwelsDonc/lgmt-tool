@@ -111,6 +111,7 @@ _CSS = """
     .lb-note { color: #6b7280; font-size: 12.5px; margin-top: 10px; }
     .lb-guardrail { color: #8a6d1d; font-size: 12.5px; margin-top: 4px; }
     .lb-hint { background: #fff8e6; border: 1px solid #f3e3b3; color: #7a6414; border-radius: 10px; padding: 12px 14px; font-size: 13.5px; }
+    .all-failed-banner { background: #fef2f2; border: 1px solid #f87171; color: #b91c1c; border-radius: 10px; padding: 14px 16px; font-size: 14.5px; font-weight: 600; margin-bottom: 18px; }
 
     /* ---------- metric cards ---------- */
     .metric-cards { display: flex; flex-wrap: wrap; gap: 14px; }
@@ -929,6 +930,19 @@ def _field_from_records(records, field) -> Optional[str]:
     return None
 
 
+
+def _all_failed_banner(metrics: Dict[str, Any]) -> str:
+    """Prominent banner when every group failed (nothing valid to score)."""
+    failed = metrics.get("failed", 0)
+    if failed and metrics.get("total", 0) == 0:
+        return (
+            '<div class="all-failed-banner">All '
+            f"{failed} groups failed — check API key / endpoint / model name."
+            "</div>\n"
+        )
+    return ""
+
+
 def render_report_body(
     records: List[Dict[str, Any]],
     metrics: Dict[str, Any],
@@ -946,6 +960,7 @@ def render_report_body(
     caliber = detect_caliber(mg_ids, reference) if reference else "custom"
 
     body = ""
+    body += _all_failed_banner(metrics)
 
     # ---------------- layer 1: leaderboard ---------------- #
     body += '<div class="card"><h2 style="margin-top:0">Leaderboard</h2>\n'
