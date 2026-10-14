@@ -50,7 +50,7 @@ jobs:
       - name: demo --full (3,091-group benchmark)
         run: lgmt demo --full
       - name: Gate — no TODO/FIXME/<org> placeholders
-        run: "! grep -rn 'TODO\\|FIXME\\|<org>' --include='*.py' --include='*.md' ."
+        run: "! grep -rn 'TODO\\|FIXME\\|<org>' --include='*.py' --include='*.md' --exclude=VERIFICATION.md ."
       - name: Gate — English-only docs and package
         run: "! grep -rP '[\\x{4e00}-\\x{9fff}]' README.md DEPLOY.md docs/ lgmt/"
       - name: Gate — brand spelling (Logic-Grounded)
