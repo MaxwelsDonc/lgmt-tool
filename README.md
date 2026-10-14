@@ -84,8 +84,9 @@ Works with any OpenAI-compatible endpoint (OpenAI, DeepSeek, Claude proxy,
 or local vLLM / Ollama):
 
 ```bash
-export LGMT_API_KEY=sk-...                                     # and LGMT_BASE_URL if not OpenAI
-lgmt run --mgs benchmark --model your-model --output results.jsonl
+export LGMT_API_KEY=sk-...        # and LGMT_BASE_URL if not the default below
+export LGMT_BASE_URL=https://api.deepseek.com
+lgmt run --mgs benchmark --model deepseek-flash --output results.jsonl
 lgmt report --results results.jsonl --output report.html       # your model joins the leaderboard
 ```
 

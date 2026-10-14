@@ -4,9 +4,9 @@
 
 model:
   # Model name served by the endpoint (or an alias expanded via `aliases`).
-  name: gpt-4o
+  name: deepseek-flash
   # OpenAI-compatible endpoint. Works with OpenAI, vLLM, Ollama, proxies...
-  base_url: "https://api.openai.com/v1"
+  base_url: "https://api.deepseek.com"
   # API key. Prefer the LGMT_API_KEY environment variable in shared setups.
   api_key: ""
   # Sampling temperature (ignored for reasoning models, which reject it).
@@ -18,6 +18,6 @@ model:
 
 inference:
   # Prompting preset: zero_direct | zero_cot | few_direct | few_cot
-  prompting: zero_cot
+  prompting: zero_direct
   # Thread-pool size for inference.
   max_workers: 100

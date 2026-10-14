@@ -1014,8 +1014,8 @@ def _render_studio_page() -> str:
                 <div class="wf-field">
                     <label>Prompting Strategy</label>
                     <select id="d-prompting">
-                        <option value="zero_cot" selected>zero_cot (Zero-shot CoT · matches reference)</option>
-                        <option value="zero_direct">zero_direct (Zero-shot Direct)</option>
+                        <option value="zero_direct" selected>zero_direct (Zero-shot Direct)</option>
+                        <option value="zero_cot">zero_cot (Zero-shot CoT · matches reference)</option>
                         <option value="few_cot">few_cot (Few-shot CoT)</option>
                         <option value="few_direct">few_direct (Few-shot Direct)</option>
                     </select>
@@ -1039,11 +1039,11 @@ def _render_studio_page() -> str:
                 </div>
                 <div class="wf-field">
                     <label>Base URL</label>
-                    <input type="text" id="b-url" value="https://api.openai.com/v1">
+                    <input type="text" id="b-url" value="https://api.deepseek.com">
                 </div>
                 <div class="wf-field">
                     <label>Model Name</label>
-                    <input type="text" id="b-model" placeholder="gpt-4o / deepseek-chat / llama-3.3-70b">
+                    <input type="text" id="b-model" value="deepseek-flash">
                 </div>
                 <div class="wf-field">
                     <label>Benchmark Scope</label>
@@ -1055,8 +1055,8 @@ def _render_studio_page() -> str:
                 <div class="wf-field">
                     <label>Prompting Strategy</label>
                     <select id="b-prompting">
-                        <option value="zero_cot" selected>zero_cot (matches reference leaderboard)</option>
-                        <option value="zero_direct">zero_direct</option>
+                        <option value="zero_direct" selected>zero_direct</option>
+                        <option value="zero_cot">zero_cot (matches reference leaderboard)</option>
                         <option value="few_cot">few_cot</option>
                         <option value="few_direct">few_direct</option>
                     </select>
@@ -1177,17 +1177,17 @@ Man(socrates)</textarea>
                 </div>
                 <div class="wf-field" id="c-url-wrap">
                     <label>Base URL</label>
-                    <input type="text" id="c-url" value="https://api.openai.com/v1">
+                    <input type="text" id="c-url" value="https://api.deepseek.com">
                 </div>
                 <div class="wf-field" id="c-model-wrap">
                     <label>Model Name</label>
-                    <input type="text" id="c-model" placeholder="gpt-4o / deepseek-chat">
+                    <input type="text" id="c-model" value="deepseek-flash">
                 </div>
                 <div class="wf-field">
                     <label>Prompting Strategy</label>
                     <select id="c-prompting">
-                        <option value="zero_cot" selected>zero_cot</option>
-                        <option value="zero_direct">zero_direct</option>
+                        <option value="zero_direct" selected>zero_direct</option>
+                        <option value="zero_cot">zero_cot</option>
                         <option value="few_cot">few_cot</option>
                         <option value="few_direct">few_direct</option>
                     </select>
