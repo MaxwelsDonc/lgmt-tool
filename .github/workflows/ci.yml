@@ -52,10 +52,10 @@ jobs:
       - name: Gate — no TODO/FIXME/<org> placeholders
         run: "! grep -rn 'TODO\\|FIXME\\|<org>' --include='*.py' --include='*.md' --exclude=VERIFICATION.md ."
       - name: Gate — English-only docs and package
-        # lgmt/webapp.py is excluded: it intentionally ships bilingual
-        # (English/中文) example cases and UI labels as part of the Web
-        # Studio's bilingual-input feature.
-        run: "! grep -rP '[\x{4e00}-\x{9fff}]' README.md DEPLOY.md docs/ lgmt/ --exclude=webapp.py"
+        # Bilingual-by-design files (Web Studio UI examples + the bilingual
+        # realization/translation prompts) are excluded; -I skips binary
+        # assets such as screenshots.
+        run: "! grep -rPI '[\x{4e00}-\x{9fff}]' README.md DEPLOY.md docs/ lgmt/ --exclude=webapp.py --exclude=logic2nl.py --exclude=nl2fol.py"
       - name: Gate — brand spelling (Logic-Grounded)
         run: "! grep -rn 'Logic-Guided' ."
 
