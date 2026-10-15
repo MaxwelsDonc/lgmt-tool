@@ -7,6 +7,9 @@
 **Check whether an LLM reasons *consistently*: rewrite its logical problems
 into provably equivalent variants, ask both, and flag every self-contradiction.**
 
+**Documentation:** https://zhouzenghui.site/lgmt-tool/ — quickstart, workflow
+guides, data formats & metrics, the MR catalog, and the full API reference.
+
 LGMT is the tool companion of *"LGMT: Logic-Grounded Metamorphic Testing for
 Evaluating the Reasoning Reliability of LLMs"* (Knowledge-Based Systems, in
 press). It packages that study's methodology into an extensible testing
@@ -46,6 +49,21 @@ both in the CLI and as the three tabs of `lgmt web`):
 docker build -t lgmt .
 docker run --rm -v $(pwd)/demo_output:/app/demo_output lgmt   # offline demo; report lands in ./demo_output
 ```
+
+The image entrypoint passes any command through, so every CLI workflow in
+this README also works in Docker — append it after the image name, pass
+secrets with `-e`, and mount a local folder to get outputs back:
+
+```bash
+docker run --rm \
+  -e LGMT_API_KEY=sk-... -e LGMT_BASE_URL=https://api.deepseek.com \
+  -v $(pwd)/out:/app/out \
+  lgmt lgmt run --mgs demo --model deepseek-flash --output /app/out/results.jsonl
+```
+
+For repeated runs, keep one container and `docker exec` into it:
+`docker run -d --name lgmt -v $(pwd)/out:/app/out lgmt sleep infinity`,
+then `docker exec lgmt lgmt <command>`, and `docker rm -f lgmt` when done.
 
 **Option 2 — local install** (requires **Python ≥ 3.10**; no API key needed
 for the offline demo):
@@ -199,7 +217,7 @@ Windows/macOS/Linux × Python 3.10–3.13.
 ```
 lgmt/      the Python package (core / mrs / prompts / models / utils / webapp)
 data/      source test cases and the 3,091-group benchmark (see data/README.md)
-docs/      assets (report screenshot, TikZ architecture figure)
+docs/      Sphinx documentation sources (published at https://zhouzenghui.site/lgmt-tool/)
 examples/  custom case templates and multi-model evaluation driver
 tools/     MR regression checker — `python tools/mr_smoke_compare.py`
 tests/     pytest suite
