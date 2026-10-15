@@ -782,7 +782,7 @@ var TAB_STATE = {
     summary: 'Ready — paste your test cases above and click Build MGs & Test Model.',
     html: emptyCardHtml(
       'No Custom Cases Evaluated Yet',
-      'Paste your own cases (plain text, 中文, FOL, or JSONL) in Workflow 3 above and click <b>Build MGs &amp; Test Model</b>. Results appear strictly in this tab.'
+      'Paste your own cases in Workflow 3 above and click <b>Build MGs &amp; Test Model</b>. Results appear strictly in this tab.'
     )
   }
 };
@@ -1001,7 +1001,7 @@ function runCustom(){
   var payloadText = (document.getElementById('c-cases').value || '').trim();
   if (!payloadText) {
     TAB_STATE[3].isError = true;
-    TAB_STATE[3].summary = 'Please paste your test cases (plain text, 中文, FOL, or JSONL).';
+    TAB_STATE[3].summary = 'Please paste your test cases.';
     renderActiveTabState();
     return;
   }

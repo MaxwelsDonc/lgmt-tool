@@ -605,7 +605,11 @@ def _leaderboard_html(rows, caliber, prompting, reference) -> Tuple[str, str]:
                 f"this run used {prompting}"
             )
     else:
-        note = f"ranked on your data set · {len(rows)} model run(s) · mutual comparison"
+        note = (
+            f"ranked on your data set · {len(rows)} model run(s) · mutual comparison"
+            if len(rows) >= 2
+            else ""
+        )
     return table, note
 
 
@@ -970,11 +974,13 @@ def render_report_body(
         )
         table, note = _leaderboard_html(rows, caliber, prompting, reference)
         body += table
-        body += f'<div class="lb-note">{html.escape(note)}</div>\n'
-        body += (
-            '<div class="lb-guardrail">MVR ranks consistency only; a model must also be '
-            "accurate — sort by Acc_cons for the combined view.</div>\n"
-        )
+        if note:
+            body += f'<div class="lb-note">{html.escape(note)}</div>\n'
+        if len(rows) >= 2:
+            body += (
+                '<div class="lb-guardrail">MVR ranks consistency only; a model must also be '
+                "accurate — sort by Acc_cons for the combined view.</div>\n"
+            )
     else:
         body += (
             '<div class="lb-hint">Leaderboard is unavailable for this data set: '
