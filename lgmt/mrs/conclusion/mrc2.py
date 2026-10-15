@@ -12,6 +12,8 @@ from nltk.sem.logic import LogicParser, OrExpression
 from lgmt.core.structure import MetamorphicRelation, TestCase
 
 class MRC2(MetamorphicRelation):
+    """Disjunction with Falsehood (MR-C2)."""
+
     def __init__(self):
         self.index = "MR-C2"
         self.name = "Disjunction with Falsehood"

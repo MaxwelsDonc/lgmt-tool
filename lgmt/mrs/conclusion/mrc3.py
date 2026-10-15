@@ -12,6 +12,8 @@ from nltk.sem.logic import LogicParser, NegatedExpression
 from lgmt.core.structure import MetamorphicRelation, TestCase
 
 class MRC3(MetamorphicRelation):
+    """Double Negation (MR-C3)."""
+
     def __init__(self):
         self.index = "MR-C3"
         self.name = "Double Negation"

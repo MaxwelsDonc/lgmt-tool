@@ -15,3 +15,6 @@ rebuild_work/
 dist/
 build/
 paper/
+# Sphinx documentation
+docs/_build/
+docs/_autosummary/

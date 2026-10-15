@@ -17,6 +17,8 @@ AllExistsExpressionTuple = (AllExpression, ExistsExpression)
 # =============================================================================
 
 class MRE16(MetamorphicTransform):
+    """Canonical Quantifier Ordering (MR-E1.6)."""
+
     def __init__(self):
         super().__init__(
             index="MR-E1.6", 

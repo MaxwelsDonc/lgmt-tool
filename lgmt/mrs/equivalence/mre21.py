@@ -91,6 +91,8 @@ def simplify(elements: list) -> list:
 
 
 class MRE21(MetamorphicTransform):
+    """Redundancy Elimination (MR-E2.1)."""
+
     def __init__(self):
         transform_check = MRE21.UtilClass()
         super().__init__(

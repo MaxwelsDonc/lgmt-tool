@@ -13,6 +13,8 @@ from nltk.sem.logic import LogicParser, AndExpression
 from lgmt.core.structure import MetamorphicRelation, TestCase
 
 class MRC1(MetamorphicRelation):
+    """Conjunction with Truth (MR-C1)."""
+
     def __init__(self):
         self.index = "MR-C1"
         self.name = "Conjunction with Truth"

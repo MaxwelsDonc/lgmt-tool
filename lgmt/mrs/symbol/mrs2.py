@@ -23,6 +23,8 @@ from nltk.sem.logic import(
 # MR-S2: Predicate Renaming Invariance
 # =============================================================================
 class MRS2(MetamorphicRelation):
+    """Predicate Renaming Invariance (MR-S2)."""
+
     def __init__(self):
         self.index="MR-S2"
         self.name="Predicate Renaming Invariance"

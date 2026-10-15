@@ -256,7 +256,23 @@ def build_metamorphic_groups(
     realize_fn: Optional[RealizeFn] = None,
     max_workers: int = 1,
 ) -> List[MetamorphicGroups]:
-    """Apply MRs to source cases and collect metamorphic groups."""
+    """Apply MRs to source cases and collect metamorphic groups.
+
+    Each source case is paired with the first ``max_per_case`` applicable
+    MRs (candidate order shuffled deterministically per case).
+
+    Args:
+        source_cases: entailment test cases to transform.
+        mr_list: relations to try (defaults to every registered MR).
+        max_per_case: maximum groups created per source case.
+        seed: deterministic shuffle/transform seed.
+        realize_fn: optional logic-to-NL back-translation applied to each
+            follow-up case.
+        max_workers: thread-pool size for the per-case loop.
+
+    Returns:
+        The built groups, sorted by ``mg_id``.
+    """
     mrs = mr_list or ALL_MRS
     _transform_lock = threading.Lock()
 

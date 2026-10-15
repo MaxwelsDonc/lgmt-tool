@@ -66,6 +66,13 @@ class LogicChecker(abc.ABC):
 
 
 class MetamorphicTransform(MetamorphicRelation):
+    """Base class for MRs implemented as an AST rewrite + applicability check.
+
+    Composes a :class:`LogicTransformer` (rewrites the NLTK FOL syntax
+    tree) with a :class:`LogicChecker` (decides whether the source pattern
+    exists) into a ready-made :class:`MetamorphicRelation`.
+    """
+
     def __init__(
         self, index, name, transformer: LogicTransformer, logic_checker: LogicChecker
     ):

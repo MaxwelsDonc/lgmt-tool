@@ -1,3 +1,10 @@
+"""Metamorphic relation registry: the 20 built-ins plus custom-MR machinery.
+
+Exports the instantiated relations (:data:`ALL_MRS`), lookup by index
+(:data:`MR_INDEX_REGISTRY`), and dynamic registration helpers used by the
+CLI (``--mr-file``) and the Web Studio drawer — every custom MR is
+Z3-verified for equivalence before it can run.
+"""
 from .equivalence import (
     MRE11,
     MRE12,

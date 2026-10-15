@@ -15,6 +15,8 @@ from nltk.sem.logic import LogicParser, AndExpression
 # =============================================================================
 
 class MRP5(MetamorphicRelation):
+    """Premise Decomposition (MR-P5)."""
+
     def __init__(self):
         self.index = "MR-P5"
         self.name = "Premise Decomposition"

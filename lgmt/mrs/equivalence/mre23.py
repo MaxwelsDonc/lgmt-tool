@@ -16,6 +16,8 @@ from lgmt.mrs.equivalence.equivalence_utils import MetamorphicTransform, LogicTr
 # =============================================================================
 
 class MRE23(MetamorphicTransform):
+    """Identity and Domination Laws (MR-E2.3)."""
+
     def __init__(self):
         super().__init__(
             index="MR-E2.3", 

@@ -1,3 +1,4 @@
+"""Prompt templates for inference, NL↔FOL translation, and validation."""
 from lgmt.prompts.llm_infer import (
     SYS_FEW_SHOT_COT,
     SYS_FEW_SHOT_DIRECT,

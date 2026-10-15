@@ -17,6 +17,8 @@ from lgmt.mrs.equivalence.equivalence_utils import MetamorphicTransform, LogicTr
 # =============================================================================
 
 class MRE11(MetamorphicTransform):
+    """Implication and Biconditional Elimination (MR-E1.1)."""
+
     def __init__(self):
         super().__init__(
             index="MR-E1.1", 

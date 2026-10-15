@@ -49,6 +49,8 @@ def get_vars_final(e) -> list:
 # main class
 # =============================================================================
 class MRE15(MetamorphicTransform):
+    """Alpha-Renaming (MR-E1.5)."""
+
     def __init__(self):
         super().__init__(
             index="MR-E1.5", 

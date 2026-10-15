@@ -31,7 +31,23 @@ def audit_mgs(
     model: str,
     max_workers: int = 8,
 ) -> List[Dict[str, Any]]:
-    """Audit all changed follow-up texts; returns one record per item."""
+    """Audit every re-generated follow-up text for FOL→NL faithfulness.
+
+    For each follow-up premise/conclusion still carrying a ``[Changed_*]``
+    tag, ask the judge model whether the natural language faithfully
+    preserves the FOL structure (uses the FOL2NL-validate prompt).
+
+    Args:
+        mgs: metamorphic groups to audit.
+        client: LLM client used as the judge.
+        model: judge model name.
+        max_workers: thread-pool size.
+
+    Returns:
+        One record per audited item, each with ``mg_id``, ``mr_index``,
+        ``kind`` (``"premise_<i>"`` or ``"conclusion"``), ``fol``, ``nl``,
+        and a boolean ``valid`` verdict.
+    """
 
     def _audit_item(mg: MetamorphicGroups):
         followup = mg.followup_case

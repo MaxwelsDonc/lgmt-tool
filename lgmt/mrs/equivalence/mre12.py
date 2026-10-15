@@ -17,6 +17,8 @@ from lgmt.mrs.equivalence.equivalence_utils import MetamorphicTransform, LogicTr
 # =============================================================================
 
 class MRE12(MetamorphicTransform):
+    """Negation Normalization (MR-E1.2)."""
+
     def __init__(self):
         super().__init__(
             index="MR-E1.2", 

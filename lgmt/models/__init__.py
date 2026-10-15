@@ -1,3 +1,4 @@
+"""LLM client implementations and the abstract client interface."""
 from lgmt.models.base import LLMClient
 from lgmt.models.mock import MockLLMClient
 from lgmt.models.openai_compat import OpenAICompatClient

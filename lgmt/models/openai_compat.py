@@ -31,6 +31,16 @@ class OpenAICompatClient(LLMClient):
         max_connections: int = 1500,
         max_keepalive_connections: int = 500,
     ):
+        """Initialize the client.
+
+        Args:
+            api_key: API key for the endpoint (required).
+            base_url: OpenAI-compatible base URL (required).
+            models_map: optional short-name -> served-model-name aliases.
+            timeout: HTTP timeout in seconds per request.
+            max_connections: httpx connection-pool limit.
+            max_keepalive_connections: httpx keep-alive connection limit.
+        """
         if not api_key:
             raise ValueError(
                 "Missing API key. Set the LGMT_API_KEY environment variable, "
@@ -61,11 +71,19 @@ class OpenAICompatClient(LLMClient):
 
     @staticmethod
     def is_reasoning_model(model_name: str) -> bool:
+        """Return ``True`` if ``model_name`` marks a reasoning model.
+
+        Reasoning models reject sampling parameters, so ``temperature``
+        and ``max_tokens`` are not sent to them.
+        """
         lowered = model_name.lower()
         return any(marker in lowered for marker in REASONING_MARKERS)
 
     def resolve_model(self, model: str) -> str:
-        """Map a short alias (e.g. ``chatgpt``) to the served model name."""
+        """Map a short alias (e.g. ``chatgpt``) to the served model name.
+
+        Falls back to ``model`` itself when no alias matches.
+        """
         return self.models_map.get(model, model)
 
     def generate(

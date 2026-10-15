@@ -17,6 +17,8 @@ from lgmt.mrs.equivalence.equivalence_utils import MetamorphicTransform, LogicTr
 # =============================================================================
 
 class MRE22(MetamorphicTransform):
+    """Tautology and Contradiction Elimination (MR-E2.2)."""
+
     def __init__(self):
         transform_check = MRE22.UtilClass()
         super().__init__(

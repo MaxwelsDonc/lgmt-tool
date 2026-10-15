@@ -16,6 +16,8 @@ from lgmt.mrs.equivalence.equivalence_utils import MetamorphicTransform, LogicTr
 # =============================================================================
 
 class MRE14(MetamorphicTransform):
+    """Structural Normalization (MR-E1.4)."""
+
     def __init__(self):
         super().__init__(
             index="MR-E1.4", 

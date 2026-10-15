@@ -1,3 +1,4 @@
+"""I/O helpers, evaluation metrics, label canonicalization, and HTML reports."""
 from lgmt.utils.io import (
     load_inference_records,
     load_metamorphic_groups,

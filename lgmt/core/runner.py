@@ -54,7 +54,11 @@ PROMPTING_PRESETS: Dict[str, Tuple[str, bool]] = {
 
 
 def build_user_prompt(test_case: TestCase) -> str:
-    """Build user prompt from test case."""
+    """Build the entailment user prompt from a test case.
+
+    Joins the premise sentences and formats them with
+    ``USER_PROMPT_TEMPLATE`` from :mod:`lgmt.prompts.llm_infer`.
+    """
     premises_text = "\n".join(test_case.premises_text)
     return USER_PROMPT_TEMPLATE.format(
         premises_text=premises_text, conclusion_text=test_case.conclusion_text
@@ -72,7 +76,26 @@ def call_llm(
     retries: int = 3,
     delay: int = 2,
 ) -> dict:
-    """API call with retry and strict schema validation."""
+    """Call the model with retry, JSON repair, and strict schema validation.
+
+    Args:
+        client: the LLM client to call.
+        model_name: served model name (or alias).
+        system_prompt: system prompt for the preset in use.
+        user_prompt: rendered entailment prompt.
+        cot: if ``True``, validate against the chain-of-thought schema
+            (requires ``reasoning`` + ``label``); otherwise only ``label``.
+        context: optional task metadata forwarded to the client.
+        temperature: sampling temperature (ignored for reasoning models).
+        retries: number of retries after a failed attempt.
+        delay: seconds to wait between retries.
+
+    Returns:
+        The parsed verdict dict (``{"label": ...}`` or
+        ``{"reasoning": ..., "label": ...}``). If every attempt failed and a
+        raw response exists, returns ``{"error": ..., "raw_response": ...}``;
+        if there was no response at all, the last exception is raised.
+    """
     prompt_payload = {"system": system_prompt, "user": user_prompt}
     llm_response = None
 
@@ -148,7 +171,27 @@ def process_group(
     prompting: str = "",
     temperature: float = 0.0,
 ) -> bool:
-    """Process single metamorphic group and save result."""
+    """Judge one metamorphic group (source + follow-up) and append the result.
+
+    Calls the model on both cases, canonicalizes the verdicts, computes
+    correctness/consistency flags, and thread-safely appends one JSONL
+    record to ``result_save_path``. Groups whose responses exhausted every
+    retry, or that raised, are recorded with ``"is_valid": false`` so they
+    are visible and counted under ``failed`` instead of vanishing.
+
+    Args:
+        mg: the metamorphic group to judge.
+        client: the LLM client.
+        model_name: served model name.
+        system_prompt_text: system prompt for the active preset.
+        result_save_path: JSONL file appended to.
+        cot: whether the active preset requests chain-of-thought.
+        prompting: preset name recorded in the result.
+        temperature: sampling temperature.
+
+    Returns:
+        ``True`` in all cases (a failure is recorded, not raised).
+    """
     mg_id = mg.metadata.get("mg_id", "unknown")
     try:
         source_test_case = mg.source_case

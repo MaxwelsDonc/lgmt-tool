@@ -20,6 +20,8 @@ from nltk.sem.logic import(
 # MR-S1: Constant Renaming Invariance
 # =============================================================================
 class MRS1(MetamorphicRelation):
+    """Symbol Renaming Invariance (MR-S1)."""
+
     def __init__(self):
         self.index = "MR-S1"
         self.name = "Symbol Renaming Invariance"

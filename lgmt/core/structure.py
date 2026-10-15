@@ -16,7 +16,17 @@ from colorama import Fore, Style
 #===========================================
 @dataclass
 class TestCase:
-    """An entailment test case: premises (Gamma) and conclusion (q)."""
+    """An entailment test case: premises (Gamma) and conclusion (q).
+
+    Attributes:
+        premises_logic: FOL formulas of the premises, e.g.
+            ``["all x.(P(x) -> Q(x))", "P(a)"]``.
+        conclusion_logic: FOL formula of the conclusion, e.g. ``"Q(a)"``.
+        premises_text: natural-language premises (what the model sees).
+        conclusion_text: natural-language conclusion.
+        metadata: free-form extras; ``label`` (``True``/``False``/
+            ``Unknown``) and ``data_source`` are used by the pipeline.
+    """
     # logic-level content
     premises_logic: List[str]  # e.g. ["all x.(P(x) -> Q(x))", "P(a)"]
     conclusion_logic: str      # e.g. "Q(a)"
@@ -59,7 +69,15 @@ class TestCase:
 class MetamorphicGroups:
     """
     One MR application: source case -> follow-up case,
-    i.e. (Gamma, q) => (Gamma', q').
+    i.e. (Γ, q) => (Γ', q').
+
+    Attributes:
+        source_case: the original entailment test case.
+        followup_case: the transformed, provably equivalent variant.
+        mr_name: human-readable name of the relation that produced the
+            pair, e.g. ``"Negation Normalization"``.
+        metadata: pipeline extras; ``mg_id``, ``mr_index``, ``mr_name``,
+            and ``data_source`` are set by the builder.
     """
     source_case: TestCase
     followup_case: TestCase

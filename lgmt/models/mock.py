@@ -19,7 +19,14 @@ _FLIP_MAP = {"True": "False", "False": "True", "Unknown": "False"}
 
 
 class MockLLMClient(LLMClient):
-    """Offline, deterministic mock client. No network, no keys."""
+    """Offline, deterministic mock client. No network, no keys.
+
+    Two personas are provided (see the module docstring for details):
+
+    - ``consistent`` — always returns the logically correct verdict;
+    - ``flawed`` — correct on source cases but inconsistent on follow-ups
+      of the configured MR categories.
+    """
 
     #: Default MR categories the ``flawed`` persona gets wrong on follow-ups.
     DEFAULT_FLIP_CATEGORIES = ("E", "P")
@@ -29,6 +36,15 @@ class MockLLMClient(LLMClient):
         persona: str = "consistent",
         flip_categories: Sequence[str] = DEFAULT_FLIP_CATEGORIES,
     ):
+        """Initialize the mock client.
+
+        Args:
+            persona: ``"consistent"`` (always correct) or ``"flawed"``
+                (inconsistent on follow-ups of ``flip_categories``).
+            flip_categories: MR category letters (``"E"``, ``"S"``,
+                ``"P"``, ``"C"``) the flawed persona gets wrong on
+                follow-up cases.
+        """
         if persona not in ("consistent", "flawed"):
             raise ValueError(f"Unknown persona: {persona!r} (use 'consistent' or 'flawed')")
         self.persona = persona
@@ -63,6 +79,11 @@ class MockLLMClient(LLMClient):
         cot: bool = False,
         **_unused: Any,
     ) -> Optional[str]:
+        """Return the persona-dictated verdict as a JSON string.
+
+        Implements :meth:`~lgmt.models.base.LLMClient.generate`; dispatches
+        on ``context["task"]`` (``infer`` / ``logic2nl`` / ``validate``).
+        """
         context = context or {}
         task = context.get("task", "infer")
 

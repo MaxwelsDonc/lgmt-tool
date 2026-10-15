@@ -20,6 +20,8 @@ from lgmt.mrs.equivalence.equivalence_utils import MetamorphicTransform, LogicTr
 # =============================================================================
 
 class MRE24(MetamorphicTransform):
+    """Distributivity Law (MR-E2.4)."""
+
     def __init__(self):
         super().__init__(
             index="MR-E2.4", 
