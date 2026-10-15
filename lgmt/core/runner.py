@@ -16,7 +16,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from lgmt.core.structure import MetamorphicGroups, TestCase
-from lgmt.models.base import LLMClient
+from lgmt.models.base import LLMClient, NonRetryableRequestError
 from lgmt.prompts.llm_infer import (
     SYS_FEW_SHOT_COT,
     SYS_FEW_SHOT_DIRECT,
@@ -147,6 +147,10 @@ def call_llm(
             else:
                 raise ValueError("Empty response")
 
+        except NonRetryableRequestError:
+            # 401/402/403 and persistently truncated responses carry the
+            # provider's detail; fail fast instead of burning retries
+            raise
         except Exception as e:
             if i < retries:
                 logger.warning(f"Retry {i+1}/{retries} | Error: {e}")

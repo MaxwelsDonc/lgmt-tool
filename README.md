@@ -116,6 +116,11 @@ lgmt report --results results.jsonl --output report.html       # your model join
   `LGMT_BASE_URL` / `LGMT_MODEL` env vars > `config.yaml` > defaults. When
   the key is missing everywhere, the CLI prompts for it interactively on a
   terminal (hidden input; held in memory only).
+- **Reasoning models** (e.g. `deepseek-reasoner`, OpenAI o-series): no
+  `temperature` is sent, a `max_tokens` budget is still enforced (doubled
+  up to 8192 on truncation), and answers emitted in `reasoning_content`
+  with an empty `content` are accepted — so reasoning models work out of
+  the box.
 - **Cost transparency:** The full 3,091-group benchmark issues one judgment
   per source and per follow-up case — **6,182 API calls** per model (~10⁷
   tokens; use `--mgs demo` for an 80-call fast check first).

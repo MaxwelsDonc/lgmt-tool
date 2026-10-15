@@ -13,7 +13,7 @@ from loguru import logger
 import httpx
 from openai import OpenAI
 
-from lgmt.models.base import LLMClient
+from lgmt.models.base import LLMClient, NonRetryableRequestError
 
 #: Substrings marking reasoning models that reject sampling parameters.
 REASONING_MARKERS = ("reasoner", "o1", "o3", "o4", "r1", "deepseek-reasoner")
@@ -101,7 +101,15 @@ class OpenAICompatClient(LLMClient):
             prompt_data: ``{"system": ..., "user": ...}``
             model: model alias or served model name
             temperature: ignored for reasoning models (they reject it)
-            max_retries: retries with exponential back-off on failure
+            max_retries: retries with exponential back-off on retryable
+                failures (429/5xx/network); 401/402/403 fail fast
+            max_tokens: token budget per call; doubled up to 8192 when a
+                response comes back truncated (``finish_reason="length"``)
+
+        Raises:
+            NonRetryableRequestError: on authentication/billing errors and
+                on truncated responses that stay empty after the budget is
+                raised — the message carries the provider's error detail.
         """
         if model is None:
             raise ValueError("OpenAICompatClient.generate requires a model name")
@@ -116,20 +124,95 @@ class OpenAICompatClient(LLMClient):
             messages.append({"role": "system", "content": system_text})
         messages.append({"role": "user", "content": user_text})
 
-        kwargs: Dict[str, Any] = {"model": model_name, "messages": messages}
-        if not self.is_reasoning_model(model_name):
-            kwargs["temperature"] = temperature
-            kwargs["max_tokens"] = max_tokens
-
+        max_tokens_eff = max_tokens
+        last_error: Optional[BaseException] = None
         for attempt in range(max_retries + 1):
+            kwargs: Dict[str, Any] = {
+                "model": model_name,
+                "messages": messages,
+                # reasoning models still honor max_tokens (budget for
+                # reasoning_content); omitting it risks truncation
+                "max_tokens": max_tokens_eff,
+            }
+            if not self.is_reasoning_model(model_name):
+                kwargs["temperature"] = temperature
             try:
                 response = self.client.chat.completions.create(**kwargs)
-                return response.choices[0].message.content.strip()
             except Exception as e:
-                logger.warning(f"Model: {model} | attempt {attempt + 1}: {e}")
+                detail = self._error_detail(e)
+                if self._is_non_retryable(e):
+                    raise NonRetryableRequestError(detail) from e
+                last_error = e
+                logger.warning(
+                    f"Model: {model} | attempt {attempt + 1}: {detail}"
+                )
                 if attempt < max_retries:
                     time.sleep(2 ** attempt)
-                else:
-                    return None
+                    continue
+                return None
+
+            choice = response.choices[0]
+            content = (getattr(choice.message, "content", None) or "").strip()
+            reasoning = getattr(choice.message, "reasoning_content", None)
+            finish = getattr(choice, "finish_reason", None)
+            if finish == "length":
+                # truncated: even a partial reasoning_content is incomplete —
+                # raise the budget and retry instead of accepting it
+                if max_tokens_eff < 8192:
+                    max_tokens_eff = min(max_tokens_eff * 2, 8192)
+                    logger.warning(
+                        f"Model: {model} | response truncated "
+                        f"(finish_reason=length); raising max_tokens to "
+                        f"{max_tokens_eff} and retrying"
+                    )
+                    last_error = None
+                    continue
+                raise NonRetryableRequestError(
+                    "response truncated (finish_reason=length) — "
+                    "consider raising max_tokens"
+                )
+            if not content and reasoning:
+                # reasoning models (deepseek-reasoner/-flash, OpenAI o-series)
+                # may emit the whole answer in reasoning_content with content
+                # left empty
+                content = str(reasoning).strip()
+            if content:
+                return content
+            raise NonRetryableRequestError(
+                f"empty response content (finish_reason={finish!r})"
+            )
 
         return None
+
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _is_non_retryable(exc: BaseException) -> bool:
+        """401/402/403 must fail fast; 429 and transient errors retry."""
+        status = getattr(exc, "status_code", None) or getattr(
+            getattr(exc, "response", None), "status_code", None
+        )
+        return status in (401, 402, 403)
+
+    @staticmethod
+    def _error_detail(exc: BaseException) -> str:
+        """Best-effort extraction of provider error detail, including
+        non-standard bodies like ``{"statusCode":402,"message":"..."}``."""
+        parts = [f"{type(exc).__name__}: {exc}"]
+        response = getattr(exc, "response", None)
+        if response is not None:
+            try:
+                body = response.json()
+            except Exception:
+                body = None
+            if isinstance(body, dict):
+                status = body.get("statusCode") or body.get("status") or getattr(
+                    response, "status_code", None
+                )
+                message = body.get("message") or body.get("error")
+                if status:
+                    parts.append(f"statusCode={status}")
+                if message:
+                    parts.append(f"message={message}")
+            elif getattr(response, "status_code", None):
+                parts.append(f"statusCode={response.status_code}")
+        return " | ".join(parts)

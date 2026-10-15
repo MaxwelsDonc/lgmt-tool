@@ -3,6 +3,15 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, Tuple, Union
 
 
+class NonRetryableRequestError(Exception):
+    """A request failure that must not be retried (401/402/403, truncated
+    responses already retried with a raised budget, ...).
+
+    The message carries the provider's own error detail so it lands in the
+    failed-group record instead of a generic "Empty response".
+    """
+
+
 class LLMClient(ABC):
     """Minimal contract every LGMT model client must satisfy.
 
