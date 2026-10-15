@@ -131,11 +131,20 @@ def make_nl2fol_translator(client: LLMClient, model: str) -> FOLTranslator:
     return translate
 
 
+def _progress_tick(progress_callback: Optional[Callable[[int], None]]) -> None:
+    if progress_callback is not None:
+        try:
+            progress_callback(1)
+        except Exception:
+            pass
+
+
 def synthesize_missing_logic(
     records: List[dict],
     translator: Optional[FOLTranslator] = None,
     extractor: Optional[UnstructuredExtractor] = None,
     retries: int = 2,
+    progress_callback: Optional[Callable[[int], None]] = None,
 ) -> List[dict]:
     """Normalize raw source-case records across all 4 input types:
 
@@ -153,6 +162,7 @@ def synthesize_missing_logic(
     filled = []
     for rec in records:
         rec = dict(rec)
+        _progress_tick(progress_callback)
 
         # Step 1: Unstructured paragraph extraction if needed
         if (
@@ -406,6 +416,7 @@ def parse_and_normalize_cases(
     raw_input: str,
     translator: Optional[FOLTranslator] = None,
     extractor: Optional[UnstructuredExtractor] = None,
+    progress_callback: Optional[Callable[[int], None]] = None,
 ) -> List[TestCase]:
     """Sniff the input format and normalize it into ``TestCase`` objects.
 
@@ -484,7 +495,10 @@ def parse_and_normalize_cases(
         )
 
     normalized = synthesize_missing_logic(
-        records, translator=translator, extractor=extractor
+        records,
+        translator=translator,
+        extractor=extractor,
+        progress_callback=progress_callback,
     )
     if not normalized:
         raise ValueError(

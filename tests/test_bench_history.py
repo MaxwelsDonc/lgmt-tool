@@ -39,7 +39,7 @@ def test_benchmark_history_builds_mutual_leaderboard(monkeypatch, tmp_path):
     monkeypatch.setattr(webapp, "run_inference", _fake_run_inference)
     monkeypatch.setattr(webapp, "_new_run_dir", lambda: str(tmp_path))
     webapp.RUNS_BY_TAB.pop("benchmark", None)
-    webapp._BENCH_HISTORY.clear()
+    webapp._RUN_HISTORY.clear()
 
     state_a = webapp.execute_benchmark_workflow(
         api_key="sk-test", base_url="https://example.test/v1",
@@ -61,9 +61,9 @@ def test_benchmark_history_builds_mutual_leaderboard(monkeypatch, tmp_path):
     assert "model-a" in report_html and "model-b" in report_html
 
     # history holds aggregates only and is capped
-    hist = webapp._BENCH_HISTORY[("demo_40", "zero_cot")]
+    hist = webapp._RUN_HISTORY[("demo_40", "zero_cot")]
     assert all(set(h) == {"model", "metrics"} for h in hist)
-    assert len(hist) <= webapp._BENCH_HISTORY_MAX
+    assert len(hist) <= webapp._RUN_HISTORY_MAX
 
 
 def test_benchmark_history_isolated_per_prompting(monkeypatch, tmp_path):
@@ -71,7 +71,7 @@ def test_benchmark_history_isolated_per_prompting(monkeypatch, tmp_path):
     monkeypatch.setattr(webapp, "run_inference", _fake_run_inference)
     monkeypatch.setattr(webapp, "_new_run_dir", lambda: str(tmp_path))
     webapp.RUNS_BY_TAB.pop("benchmark", None)
-    webapp._BENCH_HISTORY.clear()
+    webapp._RUN_HISTORY.clear()
 
     webapp.execute_benchmark_workflow(
         api_key="sk-test", base_url="https://example.test/v1",

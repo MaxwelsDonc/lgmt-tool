@@ -5,6 +5,7 @@ import json
 import pytest
 
 import lgmt.mrs as mrs
+import lgmt.webapp as webapp
 from lgmt.core.builder import parse_and_normalize_cases
 from lgmt.webapp import LISTING1_CUSTOM_MR_TEMPLATE, _render_studio_page
 
@@ -223,3 +224,94 @@ def urllib_request(url, data, headers):
     import urllib.request as _u
 
     return _u.Request(url, data=data, headers=headers)
+
+
+# --------------------------------------------------------------------- #
+# Fix 2: continuous progress across the synthesis + inference phases
+# --------------------------------------------------------------------- #
+def test_parse_progress_callback_ticks_per_record():
+    ticks = []
+    payload = "\n".join(
+        [
+            '{"premises_logic": ["P(a)"], "conclusion_logic": "Q(a)"}',
+            '{"premises_logic": ["R(b)"], "conclusion_logic": "S(b)"}',
+            '{"premises_logic": ["T(c)"], "conclusion_logic": "U(c)"}',
+        ]
+    )
+    cases = parse_and_normalize_cases(payload, progress_callback=lambda t: ticks.append(t))
+    assert len(cases) == 3
+    assert len(ticks) == 3  # one tick per processed record
+
+
+def test_custom_run_progress_is_continuous(monkeypatch, tmp_path):
+    """One bar, one total: phase-1 (synthesis) steps flow into phase-2."""
+    monkeypatch.setattr("lgmt.webapp._new_run_dir", lambda: str(tmp_path))
+    fol = "\n".join(
+        [
+            '{"premises_logic": ["P(a)"], "conclusion_logic": "Q(a)", '
+            '"premises_text": ["P(a)."], "conclusion_text": "Q(a)."}',
+            '{"premises_logic": ["R(b)"], "conclusion_logic": "S(b)", '
+            '"premises_text": ["R(b)."], "conclusion_text": "S(b)."}',
+        ]
+    )
+    webapp.PROGRESS.clear()
+    webapp.execute_custom_workflow(
+        api_key="", base_url="", model="",
+        cases_jsonl=fol, categories=["E", "C"],
+        prompting="zero_direct", realize=False, use_mock=True,
+    )
+    snap = webapp.PROGRESS["custom"]
+    # 2 synthesis steps + 2 MG inference steps on the same counter
+    assert snap["total"] == 4
+    assert snap["completed"] == 4
+    assert snap["done"] is True
+
+
+# --------------------------------------------------------------------- #
+# Fix 3: custom-tab run history -> mutual leaderboard on the same caliber
+# --------------------------------------------------------------------- #
+def test_custom_tab_history_mutual_leaderboard(monkeypatch, tmp_path):
+    monkeypatch.setattr("lgmt.webapp._new_run_dir", lambda: str(tmp_path))
+    webapp.RUNS_BY_TAB.pop("custom", None)
+    webapp._RUN_HISTORY.clear()
+    fol = (
+        '{"premises_logic": ["P(a)"], "conclusion_logic": "Q(a)", '
+        '"premises_text": ["P(a)."], "conclusion_text": "Q(a)."}'
+    )
+
+    def run(persona):
+        return webapp.execute_custom_workflow(
+            api_key="", base_url="", model="",
+            cases_jsonl=fol, categories=["E", "C"],
+            prompting="zero_direct", realize=False,
+            use_mock=True, mock_persona=persona,
+        )
+
+    run("consistent")
+    state2 = run("flawed")
+    # both models ranked on the second render (custom data -> mutual board)
+    assert "mock-consistent" in state2["body_html"]
+    assert "mock-flawed" in state2["body_html"]
+    assert "mutual comparison" in state2["body_html"]
+    # consistent (MVR 0) ranks above flawed
+    assert state2["body_html"].index("mock-consistent") < state2["body_html"].index("mock-flawed")
+
+    # a different input is a different caliber bucket: no cross-ranking
+    other = (
+        '{"premises_logic": ["X(y)"], "conclusion_logic": "Z(y)", '
+        '"premises_text": ["X(y)."], "conclusion_text": "Z(y)."}'
+    )
+    state3 = webapp.execute_custom_workflow(
+        api_key="", base_url="", model="",
+        cases_jsonl=other, categories=["E", "C"],
+        prompting="zero_direct", realize=False, use_mock=True,
+    )
+    assert "mock-consistent" not in state3["body_html"]
+
+
+# --------------------------------------------------------------------- #
+# Fix 1: Load Example button fills structured JSONL
+# --------------------------------------------------------------------- #
+def test_load_example_button_fills_jsonl():
+    page = _render_studio_page()
+    assert 'onclick="loadJsonlPreset(\'EX_PRESET_JSONL\')"' in page

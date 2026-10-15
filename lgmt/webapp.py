@@ -115,9 +115,10 @@ EXAMPLE_JSONL = EXAMPLE_FOL_JSONL
 RUNS_BY_TAB: Dict[str, Dict[str, Any]] = {}
 LAST_RUN: Dict[str, Any] = {}
 
-#: Benchmark run history per (dataset, prompting): aggregates only, capped.
-_BENCH_HISTORY_MAX = 5
-_BENCH_HISTORY: Dict[tuple, "deque"] = {}
+#: Run history per caliber key (benchmark: (dataset, prompting); custom:
+#: ("custom", input fingerprint, prompting)). Aggregates only, capped.
+_RUN_HISTORY_MAX = 5
+_RUN_HISTORY: Dict[tuple, "deque"] = {}
 
 #: Live run progress per tab key: {"completed", "total", "failed", "done"}.
 PROGRESS: Dict[str, Dict[str, Any]] = {}
@@ -215,6 +216,7 @@ def _parse_source_cases(
     text: str,
     translator: Optional[FOLTranslator] = None,
     extractor: Optional[UnstructuredExtractor] = None,
+    progress_callback=None,
 ) -> List[TestCase]:
     """Parse user custom inputs of any supported form into ``TestCase`` objects.
 
@@ -223,7 +225,12 @@ def _parse_source_cases(
     """
     from lgmt.core.builder import parse_and_normalize_cases
 
-    return parse_and_normalize_cases(text, translator=translator, extractor=extractor)
+    return parse_and_normalize_cases(
+        text,
+        translator=translator,
+        extractor=extractor,
+        progress_callback=progress_callback,
+    )
 
 
 # --------------------------------------------------------------------- #
@@ -345,8 +352,8 @@ def execute_benchmark_workflow(
     # aggregate metrics + model names are retained (never raw records),
     # and history is capped to avoid unbounded growth.
     bench_key = (dataset, prompting)
-    history = _BENCH_HISTORY.setdefault(
-        bench_key, deque(maxlen=_BENCH_HISTORY_MAX)
+    history = _RUN_HISTORY.setdefault(
+        bench_key, deque(maxlen=_RUN_HISTORY_MAX)
     )
     prev = RUNS_BY_TAB.get("benchmark")
     if prev and prev.get("_bench_key") == bench_key:
@@ -434,8 +441,36 @@ def execute_custom_workflow(
         translator = make_nl2fol_translator(client, model_name)
         extractor = make_unstructured_extractor(client, model_name)
 
+    # Continuous progress: phase 1 (FOL synthesis/normalization) feeds the
+    # same bar as phase 2 (inference) — no reset between stages.
+    out_dir = _new_run_dir()
+    results_path = os.path.join(out_dir, "results.jsonl")
+    report_path = os.path.join(out_dir, "report.html")
+    if prompting not in PROMPTING_PRESETS:
+        prompting = "zero_cot"
+
+    entry = {
+        "completed": 0,
+        "total": 0,
+        "failed": 0,
+        "done": False,
+        "results_path": results_path,
+        "stage": "Synthesizing FOL…",
+    }
+    with _PROGRESS_LOCK:
+        PROGRESS["custom"] = entry
+    synth_done = {"n": 0}
+
+    def _phase1(_tick: int) -> None:
+        with _PROGRESS_LOCK:
+            entry["completed"] += 1
+        synth_done["n"] += 1
+
     cases = _parse_source_cases(
-        cases_jsonl, translator=translator, extractor=extractor
+        cases_jsonl,
+        translator=translator,
+        extractor=extractor,
+        progress_callback=_phase1,
     )
     realize_fn = make_realize_fn(client, model_name) if (realize and not use_mock) else None
 
@@ -443,17 +478,19 @@ def execute_custom_workflow(
         cases, mr_list=selected, max_per_case=1, seed=42, realize_fn=realize_fn
     )
     if not mgs:
+        with _PROGRESS_LOCK:
+            entry["done"] = True
         raise ValueError(
             "No metamorphic groups could be built from the given cases with the selected MR categories."
         )
+    with _PROGRESS_LOCK:
+        entry["total"] = synth_done["n"] + len(mgs)
+        entry["stage"] = "Running inference…"
 
-    out_dir = _new_run_dir()
-    results_path = os.path.join(out_dir, "results.jsonl")
-    report_path = os.path.join(out_dir, "report.html")
+    def _phase2(done: int, _total: int) -> None:
+        with _PROGRESS_LOCK:
+            entry["completed"] = synth_done["n"] + done
 
-    if prompting not in PROMPTING_PRESETS:
-        prompting = "zero_cot"
-    _begin_progress("custom", len(mgs), results_path)
     try:
         run_inference(
             mgs,
@@ -463,13 +500,32 @@ def execute_custom_workflow(
             result_save_path=results_path,
             max_workers=8,
             quiet=True,
-            progress_callback=_progress_callback("custom"),
+            progress_callback=_phase2,
         )
     finally:
-        _finish_progress("custom", 0)
+        with _PROGRESS_LOCK:
+            entry["done"] = True
+            entry["stage"] = ""
     records = load_inference_records(results_path)
     metrics = compute_metrics(records)
-    _finish_progress("custom", metrics.get("failed", 0))
+    with _PROGRESS_LOCK:
+        entry["failed"] = metrics.get("failed", 0)
+
+    # Mutual leaderboard history for the same input + prompting caliber.
+    import hashlib
+
+    run_key = (
+        "custom",
+        hashlib.sha256(cases_jsonl.encode("utf-8")).hexdigest()[:16],
+        prompting,
+    )
+    history = _RUN_HISTORY.setdefault(run_key, deque(maxlen=_RUN_HISTORY_MAX))
+    prev = RUNS_BY_TAB.get("custom")
+    if prev and prev.get("_run_key") == run_key:
+        history.append({"model": prev["model_name"], "metrics": prev["metrics"]})
+    history.append({"model": model_name, "metrics": metrics})
+    extra_runs = [{"model": h["model"], "metrics": h["metrics"]} for h in history]
+
     generate_run_report(
         records,
         metrics,
@@ -478,9 +534,15 @@ def execute_custom_workflow(
         title=f"LGMT Custom Evaluation Report — {model_name}",
         model=model_name,
         prompting=prompting,
+        extra_runs=extra_runs,
     )
     body_html = render_report_body(
-        records, metrics, mgs=mgs, model=model_name, prompting=prompting
+        records,
+        metrics,
+        mgs=mgs,
+        model=model_name,
+        prompting=prompting,
+        extra_runs=extra_runs,
     )
     summary = (
         f"Custom run completed: {len(records)} MGs built from {len(cases)} source case(s) · "
@@ -494,6 +556,8 @@ def execute_custom_workflow(
         "body_html": body_html,
         "summary": summary,
         "kind": f"custom ({model_name})",
+        "model_name": model_name,
+        "_run_key": run_key,
     }
     RUNS_BY_TAB["custom"] = state
     LAST_RUN.update(state)
@@ -761,16 +825,6 @@ function switchTab(idx){
 // ---------------- Tab 3: smart input, model sync, custom-MR drawer ----------------
 var CUSTOM_MRS = [];
 
-function fillExample(key){
-  var map = {
-    'plain_en': 'EX_PRESET_PLAIN_EN',
-    'plain_zh': 'EX_PRESET_PLAIN_ZH',
-    'jsonl': 'EX_PRESET_JSONL'
-  };
-  var preset = (PRESETS[map[key]] || '');
-  if (preset) document.getElementById('c-cases').value = preset;
-}
-
 // Keep Tab 2 and Tab 3 model configuration in sync (both directions).
 function syncModelConfig(source){
   var pairs = [
@@ -872,10 +926,11 @@ function updateProgressView(tabIdx, d){
   var completed = d.completed || 0;
   var pct = total ? Math.round(completed / total * 100) : 0;
   fill.style.width = pct + '%';
+  var stage = d.stage ? '<span style="color:#3a6ea5;">' + d.stage + '</span> · ' : '';
   text.innerHTML = total
-    ? '<b>' + completed + '</b>/' + total + ' (' + pct + '%)' +
+    ? stage + '<b>' + completed + '</b>/' + total + ' (' + pct + '%)' +
       (d.failed ? ' · <span style="color:#b91c1c;">' + d.failed + ' failed</span>' : '')
-    : 'Preparing run…';
+    : stage + 'Preparing run…';
 }
 
 // ---------------- API Dispatch (Strictly Scoped to Tab) ----------------
@@ -975,9 +1030,7 @@ def _render_studio_page() -> str:
             "nl_zh": EXAMPLE_NL_ZH_JSONL,
             "pure_fol": EXAMPLE_PURE_FOL_JSONL,
             "dual_fol": EXAMPLE_FOL_JSONL,
-            "EX_PRESET_PLAIN_EN": EXAMPLE_PLAINTEXT_EN,
-            "EX_PRESET_PLAIN_ZH": EXAMPLE_PLAINTEXT_ZH,
-            "EX_PRESET_JSONL": EXAMPLE_FOL_JSONL,
+            "EX_PRESET_JSONL": EXAMPLE_NL_EN_JSONL,
         },
         ensure_ascii=False,
     ).replace("</", "<\\/")
@@ -1141,19 +1194,14 @@ def _render_studio_page() -> str:
                 <div class="sub-hint">
                     <span><b>Test Cases</b> — paste plain text, Chinese/English sentences, FOL formulas, or JSONL. <b>No ground-truth labels needed.</b></span>
                     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-                        <select class="btn-secondary" style="padding:5px 8px;" onchange="if(this.value){{fillExample(this.value);this.value='';}}">
-                            <option value="">Load Example ▾</option>
-                            <option value="plain_en">1. Plain Text — Medical &amp; Legal (English)</option>
-                            <option value="plain_zh">2. 中文业务规则段落 (Chinese)</option>
-                            <option value="jsonl">3. Structured JSONL (NL + FOL)</option>
-                        </select>
+                        <button type="button" class="btn-secondary" onclick="loadJsonlPreset('EX_PRESET_JSONL')">Load Example</button>
                         <label class="btn-secondary" style="cursor:pointer;margin:0;">
                             📂 Upload File <input type="file" accept=".txt,.jsonl,.json" style="display:none;" onchange="handleFileUpload(this)">
                         </label>
                     </div>
                 </div>
                 <div class="wf-field">
-                    <textarea id="c-cases" rows="6">{html.escape(EXAMPLE_PLAINTEXT_EN)}</textarea>
+                    <textarea id="c-cases" rows="6">{html.escape(EXAMPLE_NL_EN_JSONL)}</textarea>
                 </div>
             </div>
 
@@ -1308,6 +1356,7 @@ class _StudioHandler(BaseHTTPRequestHandler):
                     prompting=data.get("prompting", "zero_cot"),
                     realize=bool(data.get("realize", True)),
                     use_mock=bool(data.get("use_mock", False)),
+                    mock_persona=data.get("mock_persona", "flawed"),
                 )
             else:
                 self._send_json({"error": f"Unknown endpoint {parsed.path}"}, status=404)

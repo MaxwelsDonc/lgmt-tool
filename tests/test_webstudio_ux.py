@@ -123,12 +123,12 @@ def test_workflow3_single_format_redesign():
     page = _page()
     # spec sentence is featured
     assert "One test case = a few premise lines + one conclusion" in page
-    # single smart input + Load Example dropdown with exactly 3 options
+    # single smart input + one Load Example button (structured JSONL)
     assert 'id="c-cases"' in page
-    assert "Load Example" in page
-    assert "Plain Text — Medical &amp; Legal (English)" in page
-    assert "中文业务规则段落 (Chinese)" in page
-    assert "Structured JSONL (NL + FOL)" in page
+    assert ">Load Example</button>" in page
+    assert "EX_PRESET_JSONL" in page
+    assert "Plain Text — Medical" not in page
+    assert "fillExample" not in page
     # register-custom-MR drawer per spec
     assert "Register Custom MR" in page
     assert "Verify with Z3 &amp; Register" in page
