@@ -92,7 +92,7 @@ class OpenAICompatClient(LLMClient):
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_retries: int = 3,
-        max_tokens: int = 4096,
+        max_tokens: Optional[int] = None,
         **_unused: Any,
     ) -> Optional[str]:
         """Unified generation interface.
@@ -102,9 +102,17 @@ class OpenAICompatClient(LLMClient):
             model: model alias or served model name
             temperature: ignored for reasoning models (they reject it)
             max_retries: retries with exponential back-off on retryable
-                failures (429/5xx/network); 401/402/403 fail fast
-            max_tokens: token budget per call; doubled up to 8192 when a
-                response comes back truncated (``finish_reason="length"``)
+                failures (429/5xx/network); 400/401/402/403 fail fast
+            max_tokens: per-call output token budget, or ``None`` (default)
+                to omit the parameter and let the provider apply its own
+                default — the right choice for current models (e.g.
+                DeepSeek V4.1 allows far beyond the legacy 8192 cap). When
+                a response comes back truncated (``finish_reason="length"``)
+                the budget escalates immediately — from 8192 up to 65536
+                when omitted, or up to at least 8192 / the requested value
+                when set. Truncation retries do not consume the
+                error-retry budget, so they also work when
+                ``max_retries=0`` (the runner drives retries itself).
 
         Raises:
             NonRetryableRequestError: on authentication/billing errors and
@@ -124,16 +132,17 @@ class OpenAICompatClient(LLMClient):
             messages.append({"role": "system", "content": system_text})
         messages.append({"role": "user", "content": user_text})
 
-        max_tokens_eff = max_tokens
-        last_error: Optional[BaseException] = None
-        for attempt in range(max_retries + 1):
+        max_tokens_eff = max_tokens  # None = omitted from the request
+        attempt = 0
+        while True:
             kwargs: Dict[str, Any] = {
                 "model": model_name,
                 "messages": messages,
+            }
+            if max_tokens_eff:
                 # reasoning models still honor max_tokens (budget for
                 # reasoning_content); omitting it risks truncation
-                "max_tokens": max_tokens_eff,
-            }
+                kwargs["max_tokens"] = max_tokens_eff
             if not self.is_reasoning_model(model_name):
                 kwargs["temperature"] = temperature
             try:
@@ -142,14 +151,14 @@ class OpenAICompatClient(LLMClient):
                 detail = self._error_detail(e)
                 if self._is_non_retryable(e):
                     raise NonRetryableRequestError(detail) from e
-                last_error = e
                 logger.warning(
                     f"Model: {model} | attempt {attempt + 1}: {detail}"
                 )
-                if attempt < max_retries:
-                    time.sleep(2 ** attempt)
-                    continue
-                return None
+                if attempt >= max_retries:
+                    return None
+                time.sleep(2 ** attempt)
+                attempt += 1
+                continue
 
             choice = response.choices[0]
             content = (getattr(choice.message, "content", None) or "").strip()
@@ -157,15 +166,24 @@ class OpenAICompatClient(LLMClient):
             finish = getattr(choice, "finish_reason", None)
             if finish == "length":
                 # truncated: even a partial reasoning_content is incomplete —
-                # raise the budget and retry instead of accepting it
-                if max_tokens_eff < 8192:
-                    max_tokens_eff = min(max_tokens_eff * 2, 8192)
+                # raise the budget and retry instead of accepting it.
+                # Truncation retries are immediate and free: they must not
+                # consume the error-retry budget (the runner calls generate
+                # with max_retries=0 and relies on this to take effect).
+                # Ceiling: 65536 when the budget is omitted (covers every
+                # current OpenAI-compatible provider, including DeepSeek
+                # V4.1 with its ~384K allowance) or at least 8192 / the
+                # requested value when an explicit budget is set.
+                ceiling = 65536 if max_tokens is None else max(8192, max_tokens)
+                nxt = 8192 if max_tokens_eff is None else max_tokens_eff * 2
+                nxt = min(nxt, ceiling)
+                if max_tokens_eff is None or nxt > max_tokens_eff:
+                    max_tokens_eff = nxt
                     logger.warning(
                         f"Model: {model} | response truncated "
                         f"(finish_reason=length); raising max_tokens to "
                         f"{max_tokens_eff} and retrying"
                     )
-                    last_error = None
                     continue
                 raise NonRetryableRequestError(
                     "response truncated (finish_reason=length) — "
@@ -182,16 +200,19 @@ class OpenAICompatClient(LLMClient):
                 f"empty response content (finish_reason={finish!r})"
             )
 
-        return None
-
     # ------------------------------------------------------------------ #
     @staticmethod
     def _is_non_retryable(exc: BaseException) -> bool:
-        """401/402/403 must fail fast; 429 and transient errors retry."""
+        """400/401/402/403 must fail fast; 429 and transient errors retry.
+
+        400 covers deterministic request rejections like a ``max_tokens``
+        value the provider does not accept ("Invalid max_tokens param") —
+        retrying those just burns attempts.
+        """
         status = getattr(exc, "status_code", None) or getattr(
             getattr(exc, "response", None), "status_code", None
         )
-        return status in (401, 402, 403)
+        return status in (400, 401, 402, 403)
 
     @staticmethod
     def _error_detail(exc: BaseException) -> str:

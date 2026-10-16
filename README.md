@@ -10,6 +10,8 @@ into provably equivalent variants, ask both, and flag every self-contradiction.*
 **Documentation:** https://zhouzenghui.site/lgmt-tool/ — quickstart, workflow
 guides, data formats & metrics, the MR catalog, and the full API reference.
 
+![The LGMT workflow: source test cases are rewritten by metamorphic relations, realized to natural language, queried as source/follow-up pairs, and analyzed into a consistency report](docs/workflow.png)
+
 LGMT is the tool companion of *"LGMT: Logic-Grounded Metamorphic Testing for
 Evaluating the Reasoning Reliability of LLMs"* (Knowledge-Based Systems, in
 press). It packages that study's methodology into an extensible testing
@@ -117,10 +119,12 @@ lgmt report --results results.jsonl --output report.html       # your model join
   the key is missing everywhere, the CLI prompts for it interactively on a
   terminal (hidden input; held in memory only).
 - **Reasoning models** (e.g. `deepseek-reasoner`, OpenAI o-series): no
-  `temperature` is sent, a `max_tokens` budget is still enforced (doubled
-  up to 8192 on truncation), and answers emitted in `reasoning_content`
-  with an empty `content` are accepted — so reasoning models work out of
-  the box.
+  `temperature` is sent. **No `max_tokens` is sent at all** — the provider
+  applies its own default, and if a response still comes back truncated
+  (`finish_reason="length"`) the budget escalates automatically
+  (8192 → 65536), so verbose chain-of-thought completes. Answers emitted
+  in `reasoning_content` with an empty `content` are accepted — reasoning
+  models work out of the box.
 - **Cost transparency:** The full 3,091-group benchmark issues one judgment
   per source and per follow-up case — **6,182 API calls** per model (~10⁷
   tokens; use `--mgs demo` for an 80-call fast check first).

@@ -75,6 +75,7 @@ def call_llm(
     temperature: float = 0.0,
     retries: int = 3,
     delay: int = 2,
+    max_tokens: Optional[int] = None,
 ) -> dict:
     """Call the model with retry, JSON repair, and strict schema validation.
 
@@ -89,6 +90,9 @@ def call_llm(
         temperature: sampling temperature (ignored for reasoning models).
         retries: number of retries after a failed attempt.
         delay: seconds to wait between retries.
+        max_tokens: per-call output token budget, or ``None`` to let the
+            provider apply its own default; the client escalates the budget
+            when a response comes back truncated.
 
     Returns:
         The parsed verdict dict (``{"label": ...}`` or
@@ -108,6 +112,7 @@ def call_llm(
                 context=context,
                 cot=cot,
                 temperature=temperature,
+                max_tokens=max_tokens,
             )
             if llm_response:
                 # clean Markdown code block
@@ -174,6 +179,7 @@ def process_group(
     cot: bool,
     prompting: str = "",
     temperature: float = 0.0,
+    max_tokens: Optional[int] = None,
 ) -> bool:
     """Judge one metamorphic group (source + follow-up) and append the result.
 
@@ -192,6 +198,9 @@ def process_group(
         cot: whether the active preset requests chain-of-thought.
         prompting: preset name recorded in the result.
         temperature: sampling temperature.
+        max_tokens: per-call output token budget, or ``None`` for the
+            provider default (the client raises the budget on truncation;
+            see :meth:`OpenAICompatClient.generate`).
 
     Returns:
         ``True`` in all cases (a failure is recorded, not raised).
@@ -220,6 +229,7 @@ def process_group(
             cot,
             context={**base_context, "role": "source"},
             temperature=temperature,
+            max_tokens=max_tokens,
         )
         followup_response = call_llm(
             client,
@@ -229,6 +239,7 @@ def process_group(
             cot,
             context={**base_context, "role": "followup"},
             temperature=temperature,
+            max_tokens=max_tokens,
         )
 
         source_input_dict = {
@@ -350,12 +361,16 @@ def run_inference(
     max_workers: int = 100,
     quiet: bool = False,
     temperature: float = 0.0,
+    max_tokens: Optional[int] = None,
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> str:
     """Run entailment inference over all MGs and write per-MG JSONL.
 
     ``temperature`` is forwarded to the client; reasoning models that
     reject sampling parameters ignore it client-side.
+    ``max_tokens`` is the per-call output budget (``None`` = provider
+    default); the client escalates it when a response comes back truncated
+    (up to 65536 when omitted), so verbose chain-of-thought can complete.
     ``progress_callback`` (if given) is invoked as
     ``progress_callback(completed, total)`` once per finished group —
     success or failure — from the single consumer thread.
@@ -401,6 +416,7 @@ def run_inference(
                     cot,
                     prompting,
                     temperature,
+                    max_tokens,
                 ): mg
                 for mg in mgs
             }
