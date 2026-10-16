@@ -30,8 +30,6 @@ pipeline:
   and collapsible CoT reasoning traces;
 - **Bundled 3,091-group evaluation benchmark** with documented provenance.
 
-![An LGMT report: your model ranked against six reference LLMs, with per-group violation evidence](docs/report-screenshot.png)
-
 ## Three Workflows at a Glance
 
 Depending on your goal, choose one of the three workflows below (available
