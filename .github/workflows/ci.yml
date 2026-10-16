@@ -22,9 +22,9 @@ jobs:
       - name: Run test suite
         run: pytest
 
-  # The remaining items of docs/VERIFICATION.md that unit tests + readme-smoke
-  # do not already cover: the MR red-line tool itself, the Web Studio server,
-  # the multi-model driver script, demo --full, and the documentation gates.
+  # Items the unit tests + readme-smoke do not already cover: the MR
+  # red-line tool itself, the Web Studio server, the multi-model driver
+  # script, demo --full, and the documentation gates.
   verify-checklist:
     runs-on: ubuntu-latest
     steps:
@@ -50,12 +50,12 @@ jobs:
       - name: demo --full (3,091-group benchmark)
         run: lgmt demo --full
       - name: Gate — no TODO/FIXME/<org> placeholders
-        run: "! grep -rn 'TODO\\|FIXME\\|<org>' --include='*.py' --include='*.md' --exclude=VERIFICATION.md ."
+        run: "! grep -rn 'TODO\\|FIXME\\|<org>' --include='*.py' --include='*.md' ."
       - name: Gate — English-only docs and package
         # Bilingual-by-design files (Web Studio UI examples + the bilingual
         # realization/translation prompts) are excluded; -I skips binary
         # assets such as screenshots.
-        run: '! grep -rPI "[\x{4e00}-\x{9fff}]" README.md DEPLOY.md docs/ lgmt/ --exclude=webapp.py --exclude=logic2nl.py --exclude=nl2fol.py --exclude=SPEC-Workflow3-CustomMR.md' 
+        run: '! grep -rPI "[\x{4e00}-\x{9fff}]" README.md DEPLOY.md docs/ lgmt/ --exclude=webapp.py --exclude=logic2nl.py --exclude=nl2fol.py' 
       - name: Gate — brand spelling (Logic-Grounded)
         run: "! grep -rn 'Logic-Guided' . --exclude-dir=.git --exclude-dir=.venv --exclude=ci.yml --exclude=VERIFICATION.md"
 
