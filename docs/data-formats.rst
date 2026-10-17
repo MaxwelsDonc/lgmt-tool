@@ -116,10 +116,10 @@ the LGMT evaluation):
   follow-up verdicts disagree. The headline consistency metric.
 - **ACC-static** — accuracy on source cases; **ACC-cons** — accuracy on
   both cases of a group.
-- **HDR** (Harmful Disagreement Rate) — among judged pairs, the fraction
+- **HDR** (Hidden Defect Rate) — among judged pairs, the fraction
   where the source verdict is correct and the follow-up verdict is wrong
   (the violations that actually flip a correct answer).
-- **FUR** (Flaw-persisting Unanimous Rate) — fraction of MGs where both
+- **FUR** (False Unreported Rate) — fraction of MGs where both
   verdicts are wrong yet consistent: the consistency oracle cannot flag
   them, so a low MVR does not imply a sound model.
 

@@ -1009,7 +1009,7 @@ def render_report_body(
         )
         + _metric_card(
             f"{metrics['hdr'] * 100:.2f}%",
-            "HDR (harmful disagreement)",
+            "HDR (hidden defect)",
             "mc-amber",
             "Source right → follow-up wrong (↓)",
         )
