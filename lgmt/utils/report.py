@@ -44,8 +44,8 @@ _METRIC_TIPS = {
     "mvr": "Metamorphic Violation Rate: fraction of groups where source and follow-up verdicts disagree (lower is better).",
     "acc_static": "Static Accuracy: accuracy on original source cases alone (higher is better).",
     "acc_cons": "Consistent Accuracy: fraction of groups where BOTH source and follow-up verdicts are correct (higher is better).",
-    "hdr": "Harmful Disagreement Rate: fraction of groups judged correctly on source but flipped to wrong on follow-up (lower is better).",
-    "fur": "Flaw-persisting Unanimous Rate: fraction of groups where both verdicts are wrong yet consistent (lower is better).",
+    "hdr": "Hidden Defect Rate: fraction of groups judged correctly on source but flipped to wrong on follow-up (lower is better).",
+    "fur": "False Unreported Rate: fraction of groups where both verdicts are wrong yet consistent (lower is better).",
 }
 
 # --------------------------------------------------------------------- #

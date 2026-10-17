@@ -5,9 +5,9 @@ Formulas follow the LGMT evaluation:
 - MVR (Metamorphic Violation Rate): fraction of MGs whose source and
   follow-up verdicts disagree.
 - acc_static: accuracy on source cases; acc_cons: accuracy on both cases.
-- HDR (Harmful Disagreement Rate): among judged pairs, fraction where the
+- HDR (Hidden Defect Rate): among judged pairs, fraction where the
   source verdict is correct and the follow-up verdict is wrong.
-- FUR (Flaw-persisting Unanimous Rate): fraction of MGs where both verdicts
+- FUR (False Unreported Rate): fraction of MGs where both verdicts
   are wrong yet consistent (the consistency oracle cannot flag them).
 """
 from typing import Any, Dict, List, Optional
