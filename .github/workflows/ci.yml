@@ -59,7 +59,7 @@ jobs:
       - name: Gate — brand spelling (Logic-Grounded)
         run: "! grep -rn 'Logic-Guided' . --exclude-dir=.git --exclude-dir=.venv --exclude=ci.yml --exclude=VERIFICATION.md"
       - name: Gate — metric names match the KBS paper
-        run: "! grep -rn -i 'harmful disagreement\|flaw.persist\|unanimous' lgmt/ docs/ README.md"
+        run: '! grep -rn -i "harmful disagreement\|flaw.persist\|unanimous" lgmt/ docs/ README.md'
 
   docker-build:
     runs-on: ubuntu-latest
