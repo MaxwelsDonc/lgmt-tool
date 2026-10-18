@@ -62,6 +62,7 @@ jobs:
             org.opencontainers.image.licenses=MIT
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -71,3 +72,33 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # What a reviewer on another machine will actually get: log out first, so
+      # this only passes if the package is public, then run the README commands.
+      - name: Smoke-test the published image (anonymous pull)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io
+          IMG=ghcr.io/maxwelsdonc/lgmt-tool:latest
+          docker pull "$IMG"
+          docker run --rm "$IMG" lgmt demo --quiet
+          docker run --rm "$IMG" lgmt demo --full --quiet
+          docker run --rm "$IMG" sh -c 'lgmt demo --quiet && test -s demo_output/report.html && echo "report OK"'
+          docker run --rm "$IMG" lgmt list-mrs | grep -q "MR-C3"
+          echo "CLI + full benchmark OK"
+
+      - name: Smoke-test Web Studio in the published image
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          IMG=ghcr.io/maxwelsdonc/lgmt-tool:latest
+          docker run -d --rm -p 7860:7860 --name lgmt-smoke "$IMG" lgmt-web
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:7860/ | grep -q "Quick Demo"; then ok=1; break; fi
+            sleep 1
+          done
+          docker rm -f lgmt-smoke >/dev/null 2>&1 || true
+          test "$ok" = 1
+          echo "Web Studio OK"
