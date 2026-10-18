@@ -46,9 +46,13 @@ both in the CLI and as the three tabs of `lgmt web`):
 **Option 1 — Docker (nothing to install beyond Docker):**
 
 ```bash
-docker build -t lgmt .
+docker pull ghcr.io/maxwelsdonc/lgmt-tool:latest      # prebuilt, linux/amd64 + linux/arm64
+docker tag  ghcr.io/maxwelsdonc/lgmt-tool:latest lgmt # keep the commands below unchanged
 docker run --rm -v $(pwd)/demo_output:/app/demo_output lgmt   # offline demo; report lands in ./demo_output
 ```
+
+The published image is public — no `docker login` needed. Prefer to build from
+source? `docker build -t lgmt .` produces the same image.
 
 The image entrypoint passes any command through, so every CLI workflow in
 this README also works in Docker — append it after the image name, pass

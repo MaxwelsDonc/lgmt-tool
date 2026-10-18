@@ -1,5 +1,19 @@
 # Deployment notes
 
+## Published image (recommended)
+
+`.github/workflows/docker-publish.yml` builds a multi-arch image
+(`linux/amd64`, `linux/arm64`) and pushes it to the GitHub Container Registry
+on every push to `main`, on `v*` tags, and on manual dispatch. The package is
+public, so reviewers need no `docker login`:
+
+```bash
+docker pull ghcr.io/maxwelsdonc/lgmt-tool:latest
+docker run --rm ghcr.io/maxwelsdonc/lgmt-tool                     # offline demo
+docker run --rm ghcr.io/maxwelsdonc/lgmt-tool lgmt demo --full    # 3,091-group benchmark
+docker run --rm -p 7860:7860 ghcr.io/maxwelsdonc/lgmt-tool lgmt-web   # Web Studio
+```
+
 ## Docker
 
 ```bash
