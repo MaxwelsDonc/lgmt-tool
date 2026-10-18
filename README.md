@@ -10,7 +10,7 @@ into provably equivalent variants, ask both, and flag every self-contradiction.*
 **Documentation:** https://zhouzenghui.site/lgmt-tool/ — quickstart, workflow
 guides, data formats & metrics, the MR catalog, and the full API reference.
 
-![The LGMT workflow: source test cases are rewritten by metamorphic relations, realized to natural language, queried as source/follow-up pairs, and analyzed into a consistency report](docs/workflow.png)
+![The LGMT workflow: source test cases are rewritten by the 20 metamorphic relations, realized to natural language, queried as source/follow-up pairs, and analyzed into a consistency report — with an independent fidelity audit, the bundled 3,091-group benchmark, and an illustrative violation](docs/workflow.png)
 
 LGMT is the tool companion of *"LGMT: Logic-Grounded Metamorphic Testing for
 Evaluating the Reasoning Reliability of LLMs"* (Knowledge-Based Systems, in
