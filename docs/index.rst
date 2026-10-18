@@ -11,9 +11,9 @@ Metamorphic Testing for Evaluating the Reasoning Reliability of LLMs"*
 LGMT gives you:
 
 - **20 first-order-logic metamorphic relations** — equivalence-law
-  rewriting of FOL syntax trees (De Morgan, contraposition, quantifier
-  dualities, premise restructuring, symbol renaming), plus auto-discovery
-  for custom MRs;
+  rewriting of FOL syntax trees (De Morgan, quantifier dualities, implication
+  elimination, distributivity, double negation, premise restructuring, symbol
+  renaming), plus auto-discovery for custom MRs;
 - **Z3-guarded correctness** — every built-in MR's equivalence preservation
   is verified by SMT-based tests;
 - **CLI + zero-dependency Web Studio** targeting any OpenAI-compatible

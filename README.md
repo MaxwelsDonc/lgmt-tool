@@ -18,8 +18,9 @@ press). It packages that study's methodology into an extensible testing
 pipeline:
 
 - **20 first-order-logic metamorphic relations** — equivalence-law rewriting
-  of FOL syntax trees (De Morgan, contraposition, quantifier dualities,
-  premise restructuring, symbol renaming), with auto-discovery for custom MRs;
+  of FOL syntax trees (De Morgan, quantifier dualities, implication
+  elimination, distributivity, double negation, premise restructuring, symbol
+  renaming), with auto-discovery for custom MRs;
 - **Z3-guarded correctness**: every built-in MR's equivalence preservation
   is verified by SMT-based tests (`tests/z3check.py`);
 - **CLI + Zero-Dependency Web Studio** targeting any OpenAI-compatible

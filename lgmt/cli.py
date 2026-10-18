@@ -471,7 +471,7 @@ def cmd_list_mrs(args) -> int:
     if getattr(args, "mr_file", None):
         _load_mr_files(args.mr_file)
     cat_names = {
-        "E": "Formula Equivalence (De Morgan, Contraposition, Quantifiers, PNNF)",
+        "E": "Formula Equivalence (De Morgan, Implication Laws, Quantifiers, PNNF)",
         "S": "Symbol Renaming (Predicate / Constant Alpha-Renaming)",
         "P": "Premise Restructuring (Reorder, Duplicate, Irrelevant, Fuse, Split)",
         "C": "Conclusion Variation (Contradiction, Tautology, Double Negation)",
