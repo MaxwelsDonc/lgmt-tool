@@ -1,11 +1,16 @@
+<p align="center"><img src="docs/logo.png" alt="LGMT — Logic-Grounded Metamorphic Testing" width="470"></p>
+
 # LGMT — Logic-Grounded Metamorphic Testing for LLM Logical Reasoning
 
 [![CI](https://github.com/MaxwelsDonc/lgmt-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/MaxwelsDonc/lgmt-tool/actions/workflows/ci.yml)
 [![Python ≥3.10](https://img.shields.io/badge/python-≥3.10-blue.svg)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Demo video](https://img.shields.io/badge/demo%20video-4%20min-c2410c)](https://youtu.be/gou4opptu1U)
 
 **Check whether an LLM reasons *consistently*: rewrite its logical problems
 into provably equivalent variants, ask both, and flag every self-contradiction.**
+
+**▶ Demo video (4 min):** https://youtu.be/gou4opptu1U
 
 **Documentation:** https://zhouzenghui.site/lgmt-tool/ — quickstart, workflow
 guides, data formats & metrics, the MR catalog, and the full API reference.

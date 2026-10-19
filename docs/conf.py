@@ -42,4 +42,5 @@ exclude_patterns = [
 
 html_theme = "furo"
 html_title = "LGMT"
+html_logo = "logo.png"
 html_static_path = []
