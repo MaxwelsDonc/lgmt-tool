@@ -8,12 +8,9 @@ evaluation set used in the paper, and a small demo subset.
 
 | Dataset | Citation | Original repository |
 |---|---|---|
-| FOLIO | Simeng Han, Hailey Schoelkopf, Yilun Zhao, et al. "FOLIO: Natural Language Reasoning with First-Order Logic." arXiv:2209.00840, 2022/2024. | https://github.com/yale-nlp/FOLIO |
-| LogicNLI | Oren Asel, Hai Kezil, Nachshon Cohen, et al. "LogicNLI: A Dataset for NLI-based Inference in Deductive Logic." 2021. | https://github.com/lgw863/LogicNLI-dataset |
-| ProverQA | Hanhao Zhao, Zhengyuan Liu, et al. "ProverQA: An Expert Annotated Dataset for Proof Generation..." 2023. | https://github.com/Zayne-sprague/ProverQA |
-
-(If a citation above is imprecise, please open an issue — corrections are
-welcome.)
+| FOLIO | Simeng Han, Hailey Schoelkopf, Yilun Zhao, et al. "FOLIO: Natural Language Reasoning with First-Order Logic." EMNLP 2024. | https://github.com/yale-nlp/FOLIO |
+| LogicNLI | Jidong Tian, Yitian Li, Wenqing Chen, et al. "Diagnosing the First-Order Logical Reasoning Ability Through LogicNLI." EMNLP 2021. | https://github.com/omnilabNLP/LogicNLI |
+| ProverQA | Chengwen Qi, Ren Ma, Bowen Li, et al. "Large Language Models Meet Symbolic Provers for Logical Reasoning Evaluation." ICLR 2025. | https://github.com/opendatalab/ProverGen |
 
 ## License status — read before redistributing
 

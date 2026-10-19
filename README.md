@@ -1,4 +1,3 @@
-<p align="center"><img src="docs/logo.png" alt="LGMT — Logic-Grounded Metamorphic Testing" width="470"></p>
 
 # LGMT — Logic-Grounded Metamorphic Testing for LLM Logical Reasoning
 
@@ -12,8 +11,7 @@ into provably equivalent variants, ask both, and flag every self-contradiction.*
 
 **▶ Demo video (4 min):** https://youtu.be/gou4opptu1U
 
-**Documentation:** https://zhouzenghui.site/lgmt-tool/ — quickstart, workflow
-guides, data formats & metrics, the MR catalog, and the full API reference.
+**Documentation:** https://zhouzenghui.site/lgmt-tool/
 
 ![The LGMT workflow: source test cases are rewritten by one of 20 metamorphic relations, realized to natural language, queried as source/follow-up pairs, and analyzed into a consistency report; the tool ships a 3,091-case benchmark plus a 40-case demo subset and targets any OpenAI-compatible model](docs/workflow.png)
 
