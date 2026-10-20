@@ -14,7 +14,7 @@ import random
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from json_repair import repair_json
 from loguru import logger
@@ -382,6 +382,10 @@ def make_realize_fn(
     lock = threading.Lock()
 
     def realize(source: TestCase, followup: TestCase) -> TestCase:
+        # Every statement re-generated below is recorded so that
+        # ``lgmt audit`` can later check it against its FOL formula.
+        realized: List[Dict[str, Any]] = []
+
         texts = list(followup.premises_text)
         for i, text in enumerate(texts):
             match = _PREMISE_TAG.match(text)
@@ -397,16 +401,39 @@ def make_realize_fn(
                     followup.premises_logic[i],
                 )
             texts[i] = translated
+            realized.append(
+                {
+                    "kind": f"premise_{i}",
+                    "fol": followup.premises_logic[i],
+                    "nl": translated,
+                }
+            )
         followup.premises_text = texts
 
         conc_match = _CONCLUSION_TAG.match(followup.conclusion_text)
         if conc_match:
             with lock:
-                followup.conclusion_text = _translate(
+                translated = _translate(
                     source.conclusion_logic,
                     source.conclusion_text,
                     followup.conclusion_logic,
                 )
+            followup.conclusion_text = translated
+            realized.append(
+                {
+                    "kind": "conclusion",
+                    "fol": followup.conclusion_logic,
+                    "nl": translated,
+                }
+            )
+
+        if realized:
+            # copy-on-write: some MRs deep-copy a case, but never mutate a
+            # metadata dict shared with the source case.
+            followup.metadata = dict(followup.metadata or {})
+            followup.metadata["realized_items"] = (
+                list(followup.metadata.get("realized_items") or []) + realized
+            )
         return followup
 
     return realize

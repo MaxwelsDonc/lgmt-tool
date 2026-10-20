@@ -396,6 +396,13 @@ def cmd_audit(args) -> int:
     records = audit_mgs(mgs, client, model_name, max_workers=settings.max_workers)
     write_jsonl(args.output, records)
     summary = audit_summary(records)
+    if summary["total"] == 0:
+        print(
+            "No re-generated statements found in the MG file: nothing to audit.\n"
+            "Build the groups with realization enabled (omit --no-realize) so "
+            "that build-mgs records the statements it re-wrote."
+        )
+        return 1
     print(
         f"Fidelity: {summary['valid']}/{summary['total']} "
         f"({summary['fidelity'] * 100:.2f}%) -> {args.output}"
