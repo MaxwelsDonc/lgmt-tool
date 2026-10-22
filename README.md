@@ -39,7 +39,6 @@ pipeline.
 [Custom MRs](#custom-mrs) ·
 [Configuration](#configuration) ·
 [Benchmark](#benchmark-and-data) ·
-[Tests](#tests-and-ci) ·
 [Troubleshooting](#troubleshooting) ·
 [Contributing](#contributing) ·
 [Citation](#citation)
@@ -361,19 +360,6 @@ hidden input and keeps it in memory only.
 Provenance, per-source licenses, and rebuild notes live in
 [`data/README.md`](data/README.md). The full RQ1–RQ4 experiment scripts ship
 with the paper's review package and are available on request.
-
-## Tests and CI
-
-```bash
-pip install -e ".[dev]"
-pytest
-```
-
-The suite covers Z3-backed MR equivalence (`tests/z3check.py`), label
-canonicalization, mock self-consistency, NL→FOL synthesis, custom-MR
-discovery, CLI end-to-end runs, parse-failure handling, and report/web
-rendering. CI runs it on Windows/macOS/Linux; the matrix spot-checks Python
-3.10 and 3.13 (3.11 and 3.12 remain supported).
 
 ## Repository layout
 
