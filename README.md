@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" alt="LGMT — Logic-Grounded Metamorphic Testing for LLM Reasoning" width="440">
+  <img src="docs/logo.png" alt="LGMT — Logic-Grounded Metamorphic Testing for LLM Reasoning" width="560">
 </p>
 
 <p align="center">
@@ -17,9 +17,8 @@
 <p align="center">
   <a href="https://youtu.be/gou4opptu1U">▶ 4-minute demo</a> ·
   <a href="https://zhouzenghui.site/lgmt-tool/">Documentation</a> ·
-  <a href="#quickstart">Quickstart</a> ·
-  <a href="#cli-reference">CLI reference</a> ·
-  <a href="#citation">Citation</a>
+  <a href="https://github.com/MaxwelsDonc/lgmt-tool">GitHub</a> ·
+  <a href="https://github.com/MaxwelsDonc/lgmt-tool/issues">Issues</a>
 </p>
 
 ---
@@ -32,6 +31,8 @@ pipeline.
 **Contents:**
 [Quickstart](#quickstart) ·
 [How it works](#how-it-works) ·
+[Key metrics](#key-metrics--terms) ·
+[Example report](#example-report) ·
 [Workflows](#three-workflows) ·
 [CLI](#cli-reference) ·
 [Web Studio](#web-studio) ·
@@ -40,6 +41,7 @@ pipeline.
 [Benchmark](#benchmark-and-data) ·
 [Tests](#tests-and-ci) ·
 [Troubleshooting](#troubleshooting) ·
+[Contributing](#contributing) ·
 [Citation](#citation)
 
 ## Why LGMT
@@ -60,7 +62,10 @@ pipeline.
 
 | 20 | 3,091 | 6 | 2 |
 |:--:|:--:|:--:|:--:|
-| built-in MRs across four levels | metamorphic groups in the bundled benchmark | reference LLMs on the report leaderboard | interfaces — CLI and Web Studio |
+| built-in MRs across four levels | metamorphic groups in the bundled benchmark | reference LLMs on the report leaderboard<sup>1</sup> | interfaces — CLI and Web Studio |
+
+<sup>1</sup> GPT-5.2, o4-mini, Claude 4.5 Sonnet, DeepSeek Chat, DeepSeek
+Reasoner, and Llama 3.3 70B — your model is ranked against all six.
 
 ## Quickstart
 
@@ -118,7 +123,8 @@ lgmt demo --full   # same tour on the full 3,091-group benchmark
 Open `demo_output/report.html` in any browser — the leaderboard, metric cards,
 and violation evidence render completely offline.
 
-**Prefer a UI?** Launch the Web Studio and open <http://localhost:7860>:
+**Prefer a UI?** Launch the Web Studio (see [Web Studio](#web-studio)) and open
+<http://localhost:7860>:
 
 ```bash
 lgmt web --port 7860
@@ -142,13 +148,44 @@ lgmt web --port 7860
 5. **Analysis & Report** compares verdicts and compiles consistency metrics,
    per-MR breakdowns, and evidence cards into a standalone HTML report.
 
+## Key metrics & terms
+
+| Term | Meaning |
+|---|---|
+| **MG** (metamorphic group) | one source case plus its provably equivalent follow-up — the unit LGMT evaluates |
+| **MR** (metamorphic relation) | a logic-law rewrite of the FOL syntax tree (De Morgan, quantifier duality, …) that is verified with Z3 |
+| **MVR ↓** | Metamorphic Violation Rate — fraction of groups where source and follow-up verdicts disagree |
+| **HDR ↓** | Hidden Defect Rate — fraction of groups judged correctly on source but flipped to wrong on follow-up |
+| **FUR ↓** | False Unreported Rate — fraction of groups where both verdicts are wrong yet consistent |
+| **Acc_cons ↑** | Consistent Accuracy — fraction of groups where *both* source and follow-up verdicts are correct |
+
+Lower is better for MVR/HDR/FUR; higher is better for Acc_cons. MVR ranks
+consistency alone — pair it with accuracy (Acc_cons) for the combined view.
+
+## Example report
+
+Everything below is a real, unedited render of what `lgmt demo` produces —
+a single self-contained HTML file you can open offline and share as-is:
+
+<p align="center">
+  <img src="docs/screenshot-report.png" alt="Sample LGMT report: leaderboard of six reference SOTA models plus your model, metric cards, per-category and per-MR drill-downs" width="100%">
+</p>
+
+Your model appears on the leaderboard against the six reference models, with
+MVR/accuracy/HDR/FUR per category and per MR; clicking any violation count
+filters the evidence cards that follow, each showing the source and follow-up
+cases side by side with their FOL/NL renderings.
+
 ## Three workflows
 
 | # | Workflow | You need | Commands |
 |:-:|---|---|---|
-| 1 | **Quick offline tour**<br><sub>experience LGMT in 30 s</sub> | nothing — no key, no network | `lgmt demo` (40 groups)<br>`lgmt demo --full` (3,091 groups) |
+| 1 | **Quick offline tour**<br><sub>experience LGMT in 30 s</sub> | nothing — no key, no network | `lgmt demo` (40 groups) · `lgmt demo --full` (3,091) |
 | 2 | **Benchmark a model**<br><sub>rank an LLM against six SOTA models</sub> | an API key, or a local vLLM / Ollama URL | `lgmt run --mgs benchmark --model <model> --output results.jsonl`<br>`lgmt report --results results.jsonl --output report.html` |
 | 3 | **Test custom cases**<br><sub>audit your own domain rules</sub> | an API key + a `.jsonl` file of premise–conclusion pairs (plain English or NL+FOL; no labels) | `lgmt build-mgs --input cases.jsonl --output my_mgs.jsonl --model <model>`<br>`lgmt run --mgs my_mgs.jsonl --model <model> --output my_res.jsonl`<br>`lgmt report --results my_res.jsonl --output my_report.html` |
+
+Step-by-step walkthroughs: [Benchmark a model](#benchmark-a-model) ·
+[Test your own cases](#test-your-own-cases) · [Audit fidelity](#audit-fidelity)
 
 ## CLI reference
 
@@ -193,7 +230,8 @@ lgmt report --results results.jsonl --output report.html
 - **Shorthands.** `--mgs benchmark` → `data/metamorphic_group/processed_mgs_core/processed_mgs_3091.jsonl`;
   `--mgs demo` → the 40-group fast subset. Explicit paths also work.
 - **Cost.** The full 3,091-group benchmark issues one judgment per source and
-  per follow-up case — **6,182 API calls** per model (~10⁷ tokens). Start with
+  per follow-up case — **6,182 API calls** per model, on the order of
+  **10⁷ tokens** in total (order-of-magnitude estimate). Start with
   `--mgs demo` (80 calls) to check credentials and output parsing.
 - **Reasoning models** (e.g. `deepseek-reasoner`, OpenAI o-series): no
   `temperature` is sent, and when a response is truncated
@@ -295,10 +333,23 @@ Every custom MR is verified for logical equivalence with Z3 before it can run
 | `LGMT_MODEL` | model name or alias | `gpt-4o` |
 
 Precedence, low to high: built-in defaults < `config.yaml` < `LGMT_*` env vars <
-CLI flags. Copy [`config.example.yaml`](config.example.yaml) to `config.yaml`
-to set aliases, workers, or the prompting preset. If the key is missing on an
-interactive terminal, the CLI prompts for it with hidden input and keeps it in
-memory only.
+CLI flags. A minimal `config.yaml` (copy [`config.example.yaml`](config.example.yaml)):
+
+```yaml
+model:
+  name: deepseek-flash            # or an alias expanded via `aliases` below
+  base_url: "https://api.deepseek.com"
+  temperature: 0.0                # ignored for reasoning models
+  aliases:
+    chatgpt: gpt-4o               # CLI/model-name -> served-model-name
+
+inference:
+  prompting: zero_direct          # zero_direct | zero_cot | few_direct | few_cot
+  max_workers: 100                # thread-pool size for inference
+```
+
+If the key is missing on an interactive terminal, the CLI prompts for it with
+hidden input and keeps it in memory only.
 
 ## Benchmark and data
 
@@ -308,8 +359,8 @@ memory only.
 | `benchmark` | 3,091 | full evaluation; derived from FOLIO, LogicNLI, and ProVerQA |
 
 Provenance, per-source licenses, and rebuild notes live in
-[`data/README.md`](data/README.md). Full RQ1–RQ4 experiment scripts are in the
-companion paper's research repository, not here.
+[`data/README.md`](data/README.md). The full RQ1–RQ4 experiment scripts ship
+with the paper's review package and are available on request.
 
 ## Tests and CI
 
@@ -321,7 +372,8 @@ pytest
 The suite covers Z3-backed MR equivalence (`tests/z3check.py`), label
 canonicalization, mock self-consistency, NL→FOL synthesis, custom-MR
 discovery, CLI end-to-end runs, parse-failure handling, and report/web
-rendering. CI runs it on Windows/macOS/Linux × Python 3.10–3.13.
+rendering. CI runs it on Windows/macOS/Linux; the matrix spot-checks Python
+3.10 and 3.13 (3.11 and 3.12 remain supported).
 
 ## Repository layout
 
@@ -366,6 +418,12 @@ OpenAI-compatible root (not a full `/chat/completions` path), and the model
 name matches what the endpoint serves. Failed groups are excluded from metrics
 and flagged in the report.
 </details>
+
+## Contributing
+
+Bug reports, feature requests, and PRs are welcome. Please open an issue at
+[github.com/MaxwelsDonc/lgmt-tool/issues](https://github.com/MaxwelsDonc/lgmt-tool/issues)
+before making larger changes, and run `pytest` locally before submitting.
 
 ## Citation
 
